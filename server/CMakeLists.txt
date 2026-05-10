@@ -15,3 +15,4 @@ add_executable(server
 target_include_directories(server PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+target_compile_features(server PRIVATE cxx_std_20)
