@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 add_executable(server
-  src/main.cpp
+  src/main_runner.cpp
   src/app.cpp
   src/services/fileSharer.cpp
   src/services/fileController.cpp

@@ -16,45 +16,57 @@ namespace server::service
 {
     // namespace
     // {
-    void run_file_sender(int client_fd, std::string file_path)
+    void fileSenderHandler(int client_fd, std::string file_path)
     {
         std::cout << "Starting to send file: " << file_path << '\n';
         std::ifstream input(file_path, std::ios::binary);
         if (!input)
         {
-            std::cerr << "Failed to open file: " << file_path << '\n';
-            close(client_fd);
+            std::cerr << "Error sending file to client: failed to open file '" << file_path << "'\n";
+            ::close(client_fd);
             return;
         }
-
-        char buffer[8192];
-        // input.read(buffer, sizeof(buffer));
-        // const auto n = input.gcount();
-        // std::cout << "Reading " << n << " bytes from file...\n";
-        while (input.read(buffer, sizeof(buffer)) || input.gcount() > 0)
+        // Send filename header: "Filename: <name>\n"
+        const std::string filename = std::filesystem::path(file_path).filename().string();
+        const std::string header = "Filename: " + filename + "\n";
         {
-            std::cout << "Read " << input.gcount() << " bytes from file...\n";
-            std::size_t remaining = static_cast<std::size_t>(input.gcount());
-            const char *p = buffer;
+            const char *p = header.data();
+            std::size_t remaining = header.size();
             while (remaining > 0)
             {
-                std::cout << "Sending " << remaining << " bytes...\n";
-                const ssize_t sent =
-                    ::send(client_fd, p, remaining, 0);
+                const ssize_t sent = ::send(client_fd, p, remaining, 0);
                 if (sent <= 0)
                 {
-                    std::cerr << "Error sending file: " << std::strerror(errno) << '\n';
-                    close(client_fd);
+                    std::cerr << "Error sending file to client: " << std::strerror(errno) << '\n';
+                    ::close(client_fd);
                     return;
                 }
                 p += static_cast<std::size_t>(sent);
                 remaining -= static_cast<std::size_t>(sent);
             }
         }
-        std::cout << "Finished sending file: " << file_path << '\n';
-        close(client_fd);
+        // Send file content in 4096-byte chunks
+        char buffer[4096];
+        while (input.read(buffer, sizeof(buffer)) || input.gcount() > 0)
+        {
+            std::size_t remaining = static_cast<std::size_t>(input.gcount());
+            const char *p = buffer;
+            while (remaining > 0)
+            {
+                const ssize_t sent = ::send(client_fd, p, remaining, 0);
+                if (sent <= 0)
+                {
+                    std::cerr << "Error sending file to client: " << std::strerror(errno) << '\n';
+                    ::close(client_fd);
+                    return;
+                }
+                p += static_cast<std::size_t>(sent);
+                remaining -= static_cast<std::size_t>(sent);
+            }
+        }
+        std::cout << "File '" << filename << "' sent to client\n";
+        ::close(client_fd);
     }
-
     // } // namespace
 
     int FileSharer::offerFile(const std::string &filePath)
@@ -142,7 +154,7 @@ namespace server::service
                                      sizeof(client_ip));
         std::cout << "Client connected: " << (ip ? ip : "?") << '\n';
 
-        std::thread sender(run_file_sender, client_fd, filePath);
+        std::thread sender(fileSenderHandler, client_fd, filePath);
         sender.join();
         ::close(server_fd);
     }

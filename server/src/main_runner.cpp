@@ -34,12 +34,12 @@ int main()
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
     std::cout << "Starting client to receive file...\n";
-    const std::string cmd =
-        "nc 127.0.0.1 " + std::to_string(port) + " > /tmp/p2p_received.bin";
-    if (std::system(cmd.c_str()) != 0)
-    {
-        std::cerr << "nc failed (install netcat: brew install netcat)\n";
-    }
+    // const std::string cmd =
+    //     "nc 127.0.0.1 " + std::to_string(port) + " > /tmp/p2p_received.bin";
+    // if (std::system(cmd.c_str()) != 0)
+    // {
+    //     std::cerr << "nc failed (install netcat: brew install netcat)\n";
+    // }
 
     server_thread.join();
     return 0;
