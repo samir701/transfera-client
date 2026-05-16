@@ -2,7 +2,6 @@
 
 #include <atomic>
 #include <filesystem>
-#include <memory>
 #include <string>
 #include <thread>
 
@@ -25,13 +24,18 @@ namespace server::services
         void registerRoutes();
         void applyCorsHeaders(httplib::Response &res) const;
         void handleCorsOrNotFound(const httplib::Request &req, httplib::Response &res) const;
+        // UploadHandler + DownloadHandler
+        void handleUpload(const httplib::Request &req, httplib::Response &res);
+        // void handleDownload(const httplib::Request &req, httplib::Response &res);
+
+        static std::string makeUniqueName(const std::string &originalFilename);
+        static bool parsePortFromPath(const std::string &path, int &outPort);
 
         service::FileSharer fileSharer_;
         httplib::Server server_;
         std::filesystem::path uploadDir_;
         int port_;
 
-        // Rough equivalent to Java executor + server lifecycle control
         std::thread serverThread_;
         std::atomic<bool> running_{false};
     };
