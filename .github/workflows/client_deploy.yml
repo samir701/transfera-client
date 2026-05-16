@@ -2,11 +2,15 @@ name: Client Deploy - CI/CD for GitHub Pages
 
 on:
   push:
+    branches:
+      - main
     paths:
-      - 'ui/**'
+      - 'client/**'
   pull_request:
+    branches:
+      - main
     paths:
-      - 'ui/**'
+      - 'client/**'
   workflow_dispatch:
     inputs:
       deploy:
@@ -27,43 +31,60 @@ jobs:
   build:
     name: Build and Lint UI
     runs-on: ubuntu-latest
-  # Optional: keep matrix for lint/build checks only on PRs;
-  # for Pages deploy, use a single Node version (e.g. 20.x).
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 20.x
 
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            client/node_modules
+            ~/.npm
+          key: ${{ runner.os }}-node-20-${{ hashFiles('client/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-20-
+
       - name: Install dependencies
-        working-directory: ui
+        working-directory: client
         run: npm ci
 
       - name: Run lint
-        working-directory: ui
+        working-directory: client
         run: npm run lint --if-present
 
       - name: Build static site
-        working-directory: ui
+        working-directory: client
         env:
           NODE_ENV: production
-          # NEXT_PUBLIC_API_URL: https://your-backend.example.com
         run: npm run build
 
       - name: Setup GitHub Pages
+        if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
+        if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ui/out
+          path: client/out
 
   deploy:
     name: Deploy to GitHub Pages
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: |
+      needs.build.result == 'success' &&
+      github.ref == 'refs/heads/main' &&
+      (
+        github.event_name == 'push' ||
+        (github.event_name == 'workflow_dispatch' && inputs.deploy == true)
+      )
     runs-on: ubuntu-latest
     environment:
       name: github-pages
