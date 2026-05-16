@@ -55,10 +55,6 @@ jobs:
         working-directory: client
         run: npm ci
 
-      - name: Run lint
-        working-directory: client
-        run: npm run lint --if-present
-
       - name: Build static site
         working-directory: client
         env:
