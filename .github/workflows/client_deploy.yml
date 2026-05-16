@@ -1,0 +1,70 @@
+name: Client Deploy - CI/CD for GitHub Pages
+
+on:
+  push:
+    paths:
+      - 'ui/**'
+  pull_request:
+    paths:
+      - 'ui/**'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and Lint UI
+    runs-on: ubuntu-latest
+  # Optional: keep matrix for lint/build checks only on PRs;
+  # for Pages deploy, use a single Node version (e.g. 20.x).
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.x
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ui
+        run: npm ci
+
+      - name: Run lint
+        working-directory: ui
+        run: npm run lint --if-present
+
+      - name: Build static site
+        working-directory: ui
+        env:
+          NODE_ENV: production
+          # NEXT_PUBLIC_API_URL: https://your-backend.example.com
+        run: npm run build
+
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ui/out
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
