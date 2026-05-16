@@ -7,6 +7,12 @@ on:
   pull_request:
     paths:
       - 'ui/**'
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: Deploy to GitHub Pages after build
+        type: boolean
+        default: true
 
 permissions:
   contents: read
