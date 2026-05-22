@@ -5,7 +5,7 @@
     { href: 'frontend.html', label: 'Frontend (Next.js)' },
     { href: 'http-server.html', label: 'HTTP server (FileController)' },
     { href: 'main-lifecycle.html', label: 'main() & process lifecycle' },
-    { href: 'threads.html', label: 'Threads & concurrency' },
+    { href: 'threads.html', label: 'Threads & flowcharts' },
     { href: 'sockets-fds.html', label: 'Sockets & file descriptors' },
     { href: 'upload-flow.html', label: 'Upload pipeline' },
     { href: 'download-flow.html', label: 'Download pipeline' },
