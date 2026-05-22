@@ -90,6 +90,16 @@ namespace server::services
         std::error_code ec;
         fs::create_directories(uploadDir_, ec);
 
+        if (const char *web = std::getenv("PEERLINK_WEB_ROOT"); web && *web)
+        {
+            webRoot_ = fs::path(web);
+            if (!fs::exists(webRoot_) || !fs::is_directory(webRoot_))
+            {
+                std::cerr << "WARNING: PEERLINK_WEB_ROOT is not a directory: " << webRoot_ << '\n';
+                webRoot_.clear();
+            }
+        }
+
         // Use httplib default thread pool (avoids custom pool edge cases under load)
         server_.set_read_timeout(120, 0);
         server_.set_write_timeout(120, 0);
@@ -139,10 +149,12 @@ namespace server::services
             return false;
         }
 
-        std::cout << "P2P_Sharer API listening on http://127.0.0.1:" << port_ << '\n';
-        std::cout << "  GET  http://127.0.0.1:" << port_ << "/api/health\n";
-        std::cout << "  POST http://127.0.0.1:" << port_ << "/api/upload\n";
-        std::cout << "  GET  http://127.0.0.1:" << port_ << "/api/download/<port>\n";
+        std::cout << "PeerLink listening on http://0.0.0.0:" << port_ << '\n';
+        if (!webRoot_.empty())
+            std::cout << "  UI   http://0.0.0.0:" << port_ << "/\n";
+        std::cout << "  GET  http://0.0.0.0:" << port_ << "/api/health\n";
+        std::cout << "  POST http://0.0.0.0:" << port_ << "/api/upload\n";
+        std::cout << "  GET  http://0.0.0.0:" << port_ << "/api/download/<port>\n";
         return true;
     }
 
@@ -186,6 +198,14 @@ namespace server::services
 
         server_.Get(R"(/download/(\d+))", [this](const httplib::Request &req, httplib::Response &res)
                     { handleDownload(req, res); });
+
+        if (!webRoot_.empty())
+        {
+            if (server_.set_mount_point("/", webRoot_.string()))
+                std::cout << "Static UI: " << webRoot_ << " (http://0.0.0.0:" << port_ << "/)\n";
+            else
+                std::cerr << "WARNING: could not mount PEERLINK_WEB_ROOT at /\n";
+        }
 
         server_.set_error_handler([this](const httplib::Request &req, httplib::Response &res)
                                   {

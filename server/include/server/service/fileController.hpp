@@ -43,6 +43,7 @@ namespace server::services
         service::FileSharer fileSharer_;
         httplib::Server server_;
         std::filesystem::path uploadDir_;
+        std::filesystem::path webRoot_;
         int port_;
 
         std::thread serverThread_;

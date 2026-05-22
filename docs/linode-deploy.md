@@ -1,122 +1,102 @@
-# Deploy frontend + backend on Linode (one VM)
+# Linode: one process (C++ API + static UI on port 8080)
 
-Single Linode serves:
+No Caddy, no DuckDNS. The C++ server serves:
 
-- **UI** — static Next.js export at `/` (Caddy `file_server`)
-- **API** — C++ server on `127.0.0.1:8080`, proxied as `/api/*` (HTTPS via Caddy)
+- **UI** — files from `PEERLINK_WEB_ROOT` (default `/var/www/peerlink`)
+- **API** — `/api/health`, `/api/upload`, `/api/download/:port`
 
-P2P download uses localhost on the same VM, so this layout matches the server design.
+Open **`http://YOUR_LINODE_IP:8080/`** in a browser (HTTP only avoids mixed-content issues).
 
-## Prerequisites
-
-- Ubuntu Linode (2 GB RAM recommended for building; 1 GB works with swap + `JOBS=1`)
-- Repo at `/opt/p2p_file_sharer_in_cpp`
-- Free hostname: [DuckDNS](https://www.duckdns.org) (e.g. `peerlink-api.duckdns.org` → your Linode IP)
-
-## 1. System packages
+## 1. Packages + swap (1 GB VMs)
 
 ```bash
-apt update && apt install -y git cmake g++ nodejs npm caddy
-
-# 1GB RAM: add swap before compiling
+apt update && apt install -y git cmake g++ nodejs npm
 fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
 ```
 
-## 2. Clone / update repo
-
-```bash
-mkdir -p /opt && cd /opt
-git clone https://github.com/dasanik2001/p2p_file_sharer_in_cpp.git
-cd p2p_file_sharer_in_cpp
-git pull
-```
-
-## 3. DuckDNS (free HTTPS hostname)
-
-1. Create subdomain `peerlink-api` at duckdns.org
-2. Set IP to your Linode public IPv4
-3. Confirm: `dig +short peerlink-api.duckdns.org`
-
-## 4. Build & run C++ API
+## 2. Repo
 
 ```bash
 cd /opt/p2p_file_sharer_in_cpp
+git pull
 chmod +x deploy/linode/*.sh
-JOBS=1 ./deploy/linode/build-server.sh
-./deploy/linode/install-services.sh
 ```
 
-Edit `/etc/caddy/Caddyfile` — set your DuckDNS host (see `deploy/linode/Caddyfile.example`).
+## 3. Build API
 
 ```bash
-nano /etc/caddy/Caddyfile
-systemctl restart peerlink-api
-systemctl start peerlink-api
-systemctl status peerlink-api
-curl http://127.0.0.1:8080/api/health
+JOBS=1 ./deploy/linode/build-server.sh
 ```
 
-## 5. Firewall
+## 4. Build UI (set your Linode IP)
+
+```bash
+./deploy/linode/build-ui.sh http://172.104.206.154:8080
+```
+
+Replace `172.104.206.154` with your public IPv4.
+
+## 5. systemd
+
+```bash
+./deploy/linode/install-services.sh
+systemctl start peerlink-api
+systemctl status peerlink-api
+```
+
+Unit sets `PORT=8080` and `PEERLINK_WEB_ROOT=/var/www/peerlink`.
+
+## 6. Firewall
 
 ```bash
 ufw allow OpenSSH
-ufw allow 80/tcp
-ufw allow 443/tcp
+ufw allow 8080/tcp
 ufw enable
 ```
 
-Linode Cloud Firewall: allow inbound **22**, **80**, **443**. You do not need public **8080** (API is behind Caddy).
-
-## 6. Build & install UI
-
-Use the **same origin** as browsers will use (HTTPS):
-
-```bash
-./deploy/linode/build-ui.sh https://peerlink-api.duckdns.org
-systemctl reload caddy
-```
+Linode Cloud Firewall: inbound **22**, **8080**.
 
 ## 7. Verify
 
+On the server:
+
 ```bash
-curl https://peerlink-api.duckdns.org/api/health
+curl http://127.0.0.1:8080/api/health
 ```
 
-Browser: `https://peerlink-api.duckdns.org/` — status should show API connected.
+From your laptop:
+
+```bash
+curl http://YOUR_IP:8080/api/health
+```
+
+Browser: **`http://YOUR_IP:8080/`**
 
 ## 8. Updates
 
 ```bash
-cd /opt/p2p_file_sharer_in_cpp
-git pull
+cd /opt/p2p_file_sharer_in_cpp && git pull
 JOBS=1 ./deploy/linode/build-server.sh
+./deploy/linode/build-ui.sh http://YOUR_IP:8080
 systemctl restart peerlink-api
-./deploy/linode/build-ui.sh https://peerlink-api.duckdns.org
-systemctl reload caddy
 ```
 
-## Environment variables (Linode UI build)
+## Environment
 
-| Variable | Linode value |
-|----------|----------------|
-| `NEXT_PUBLIC_BASE_PATH` | empty (site at `/`) |
-| `NEXT_PUBLIC_API_BASE_URL` | `https://your-host` (same as Caddy host) |
+| Variable | Purpose |
+|----------|---------|
+| `PORT` | Listen port (default `8080`) |
+| `PEERLINK_WEB_ROOT` | Directory with `index.html`, `_next/`, `manual/` |
+| `NEXT_PUBLIC_API_BASE_URL` | Set at UI **build** time to `http://IP:8080` |
 
-See `client/.env.linode.example`.
+## Optional: run without systemd
 
-## GitHub Pages vs Linode
+```bash
+export PORT=8080
+export PEERLINK_WEB_ROOT=/var/www/peerlink
+./server/build/server
+```
 
-| Target | `NEXT_PUBLIC_BASE_PATH` | `NEXT_PUBLIC_API_BASE_URL` |
-|--------|-------------------------|----------------------------|
-| GitHub Pages | `/p2p_file_sharer_in_cpp` (CI default) | Your HTTPS API URL |
-| Linode | `` (empty) | `https://same-host-as-ui` |
+## GitHub Pages
 
-## Troubleshooting
-
-| Issue | Fix |
-|-------|-----|
-| `cmake` appears hung | `JOBS=1`, add swap |
-| `mixed-content` in browser | Use `https://` for UI and API host; rebuild UI after changing URL |
-| API offline in UI | `systemctl status peerlink-api`, `curl http://127.0.0.1:8080/api/health` |
-| Caddy cert errors | DNS must point to this server; ports 80/443 open |
-| 404 on assets | Rebuild with `NEXT_PUBLIC_BASE_PATH=` (Linode), not GitHub Pages path |
+Still supported via CI with `NEXT_PUBLIC_BASE_PATH=/p2p_file_sharer_in_cpp` and a separate API URL. Linode uses empty base path and same-origin `http://IP:8080`.
