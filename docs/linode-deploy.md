@@ -2,7 +2,7 @@
 
 | Service | Port | URL |
 |---------|------|-----|
-| **UI** (`serve` → `client/out`) | **80** (default) | `http://YOUR_IP/` |
+| **UI** (`client/out`) | **3000** (default) or **80** | `http://YOUR_IP:3000/` or `http://YOUR_IP/` |
 | **C++ API** | **8080** | `http://YOUR_IP:8080/api/health` |
 
 Set `CLIENT_PORT=80` in `/etc/peerlink/env` so `curl http://YOUR_IP/` works. Use `CLIENT_PORT=3000` if you prefer `http://YOUR_IP:3000/`.

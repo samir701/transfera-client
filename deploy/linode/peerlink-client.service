@@ -8,6 +8,7 @@ Type=simple
 User=root
 EnvironmentFile=-/etc/peerlink/env
 Environment=CLIENT_PORT=3000
+# Override in /etc/peerlink/env (80 works via python in run-client.sh)
 WorkingDirectory=/opt/p2p_file_sharer_in_cpp/client
 ExecStart=/opt/p2p_file_sharer_in_cpp/deploy/linode/run-client.sh
 Restart=on-failure
