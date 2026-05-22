@@ -22,13 +22,21 @@ namespace server::services
 
     private:
         void registerRoutes();
+
+        // CORS helpers (CORSHandler)
         void applyCorsHeaders(httplib::Response &res) const;
         void handleCorsOrNotFound(const httplib::Request &req, httplib::Response &res) const;
-        // UploadHandler + DownloadHandler
-        void handleUpload(const httplib::Request &req, httplib::Response &res);
-        // void handleDownload(const httplib::Request &req, httplib::Response &res);
 
+        // Java: UploadHandler
+        void handleUpload(const httplib::Request &req, httplib::Response &res);
+
+        // Java: DownloadHandler
+        void handleDownload(const httplib::Request &req, httplib::Response &res);
+
+        // Java: UUID + File.getName() for stored filename
         static std::string makeUniqueName(const std::string &originalFilename);
+
+        // Java: path.substring(lastIndexOf('/') + 1) + Integer.parseInt
         static bool parsePortFromPath(const std::string &path, int &outPort);
 
         service::FileSharer fileSharer_;
