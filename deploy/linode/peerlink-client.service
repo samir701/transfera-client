@@ -1,0 +1,16 @@
+[Unit]
+Description=PeerLink Next.js static UI
+After=network-online.target peerlink-api.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+EnvironmentFile=/etc/peerlink/env
+WorkingDirectory=/opt/p2p_file_sharer_in_cpp/client
+ExecStart=/opt/p2p_file_sharer_in_cpp/deploy/linode/run-client.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

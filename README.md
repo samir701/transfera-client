@@ -46,18 +46,20 @@ npm run dev
 
 `NEXT_PUBLIC_API_BASE_URL` must point at the C++ server (required for static export / production hosting).
 
-## Deploy on Linode (UI + API on one port)
+## Deploy on Linode (UI :3000 + API :8080)
 
-See **[docs/linode-deploy.md](docs/linode-deploy.md)** — C++ serves static UI (`PEERLINK_WEB_ROOT`) and `/api/*` on **:8080** (no reverse proxy).
+See **[docs/linode-deploy.md](docs/linode-deploy.md)** — client and C++ API on separate ports; optional map **:80 → :3000**.
 
 ```bash
 chmod +x deploy/linode/*.sh
+./deploy/linode/install-services.sh
+# edit /etc/peerlink/env
 JOBS=1 ./deploy/linode/build-server.sh
-./deploy/linode/build-ui.sh http://YOUR_LINODE_IP:8080
-./deploy/linode/install-services.sh && systemctl start peerlink-api
+./deploy/linode/build-ui.sh YOUR_LINODE_IP
+systemctl start peerlink-api peerlink-client
 ```
 
-Open `http://YOUR_LINODE_IP:8080/`.
+Open `http://YOUR_LINODE_IP:3000/` (UI calls API on `:8080`).
 
 ## Technical manual (GitHub Pages)
 

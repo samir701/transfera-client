@@ -1,105 +1,109 @@
-# Linode: one process (C++ API + static UI on port 8080)
+# Linode: client + API on two ports
 
-No Caddy, no DuckDNS. The C++ server serves:
+| Service | Port | URL |
+|---------|------|-----|
+| **UI** (static Next export via `serve`) | **3000** | `http://YOUR_IP:3000/` |
+| **C++ API** | **8080** | `http://YOUR_IP:8080/api/health` |
 
-- **UI** — files from `PEERLINK_WEB_ROOT` (default `/var/www/peerlink`)
-- **API** — `/api/health`, `/api/upload`, `/api/download/:port`
+The UI is built with `NEXT_PUBLIC_API_BASE_URL=http://YOUR_IP:8080` so the browser calls the API on **8080**.
 
-Open **`http://YOUR_LINODE_IP:8080/`** in a browser (HTTP only avoids mixed-content issues).
+Optional: map **port 80 → 3000** so `http://YOUR_IP/` opens the UI without `:3000`.
 
-## 1. Packages + swap (1 GB VMs)
-
-```bash
-apt update && apt install -y git cmake g++ nodejs npm
-fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
-```
-
-## 2. Repo
+## Setup
 
 ```bash
 cd /opt/p2p_file_sharer_in_cpp
 git pull
 chmod +x deploy/linode/*.sh
+apt update && apt install -y git cmake g++ nodejs npm iptables
+
+# 1GB: add swap before compiling
+fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
 ```
 
-## 3. Build API
-
-```bash
-JOBS=1 ./deploy/linode/build-server.sh
-```
-
-## 4. Build UI (set your Linode IP)
-
-```bash
-./deploy/linode/build-ui.sh http://172.104.206.154:8080
-```
-
-Replace `172.104.206.154` with your public IPv4.
-
-## 5. systemd
+### Configure
 
 ```bash
 ./deploy/linode/install-services.sh
-systemctl start peerlink-api
-systemctl status peerlink-api
+nano /etc/peerlink/env   # set LINODE_IP, NEXT_PUBLIC_API_BASE_URL=http://IP:8080
 ```
 
-Unit sets `PORT=8080` and `PEERLINK_WEB_ROOT=/var/www/peerlink`.
+### Build
 
-## 6. Firewall
+```bash
+JOBS=1 ./deploy/linode/build-server.sh
+./deploy/linode/build-ui.sh YOUR_LINODE_IP
+./deploy/linode/verify-ui.sh
+```
+
+### Start
+
+```bash
+systemctl start peerlink-api peerlink-client
+systemctl status peerlink-api peerlink-client
+```
+
+### Firewall
 
 ```bash
 ufw allow OpenSSH
+ufw allow 3000/tcp
 ufw allow 8080/tcp
+ufw allow 80/tcp
 ufw enable
 ```
 
-Linode Cloud Firewall: inbound **22**, **8080**.
+Linode Cloud Firewall: **22, 80, 3000, 8080**.
 
-## 7. Verify
+### Map port 80 → UI (optional)
 
 ```bash
-./deploy/linode/verify-ui.sh
+./deploy/linode/map-port-80.sh
+```
+
+Then open **`http://YOUR_IP/`** (port 80) or **`http://YOUR_IP:3000/`**.
+
+## Verify
+
+```bash
 curl http://127.0.0.1:8080/api/health
-curl -I http://127.0.0.1:8080/
+curl -I http://127.0.0.1:3000/
 ```
 
-`curl -I /` should return **200** and `Content-Type: text/html`. If you see plain `Not Found`, the UI was not built or the server binary is outdated.
+From your laptop:
 
-From your laptop: **`http://YOUR_IP:8080/`**
+- UI: `http://YOUR_IP:3000/` or `http://YOUR_IP/` after port map
+- API: `http://YOUR_IP:8080/api/health`
 
-### "Not Found" in the browser
-
-1. Build UI: `./deploy/linode/build-ui.sh http://YOUR_IP:8080`
-2. Rebuild server after `git pull`: `JOBS=1 ./deploy/linode/build-server.sh`
-3. Restart: `systemctl restart peerlink-api`
-4. Check logs: `journalctl -u peerlink-api -n 20` — should show `Web root: /var/www/peerlink`
-
-## 8. Updates
+## Updates
 
 ```bash
-cd /opt/p2p_file_sharer_in_cpp && git pull
+git pull
 JOBS=1 ./deploy/linode/build-server.sh
-./deploy/linode/build-ui.sh http://YOUR_IP:8080
-systemctl restart peerlink-api
+./deploy/linode/build-ui.sh YOUR_LINODE_IP
+systemctl restart peerlink-api peerlink-client
 ```
 
-## Environment
+## Dev mode (optional, not systemd)
 
-| Variable | Purpose |
-|----------|---------|
-| `PORT` | Listen port (default `8080`) |
-| `PEERLINK_WEB_ROOT` | Directory with `index.html`, `_next/`, `manual/` |
-| `NEXT_PUBLIC_API_BASE_URL` | Set at UI **build** time to `http://IP:8080` |
-
-## Optional: run without systemd
+Terminal 1 — API:
 
 ```bash
-export PORT=8080
-export PEERLINK_WEB_ROOT=/var/www/peerlink
-./server/build/server
+cd server && PORT=8080 ./build/server
 ```
 
-## GitHub Pages
+Terminal 2 — Next dev with proxy:
 
-Still supported via CI with `NEXT_PUBLIC_BASE_PATH=/p2p_file_sharer_in_cpp` and a separate API URL. Linode uses empty base path and same-origin `http://IP:8080`.
+```bash
+cd client
+API_PROXY_TARGET=http://127.0.0.1:8080 NEXT_PUBLIC_API_BASE_URL=http://YOUR_IP:3000 npm run dev -- -H 0.0.0.0 -p 3000
+```
+
+`next dev` rewrites `/api` → `8080` so you can use `NEXT_PUBLIC_API_BASE_URL=http://YOUR_IP:3000`.
+
+## Architecture
+
+```text
+Browser → http://IP:3000 (or :80 mapped)  →  serve (client/out)
+Browser → http://IP:8080/api/*            →  C++ server
+```

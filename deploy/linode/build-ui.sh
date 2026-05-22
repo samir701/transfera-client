@@ -1,24 +1,26 @@
 #!/usr/bin/env bash
-# Build static Next.js UI and install files for PEERLINK_WEB_ROOT.
-# Usage: ./build-ui.sh http://172.104.206.154:8080
+# Build static UI; browser will call the API on port 8080.
+# Usage: ./build-ui.sh 172.104.206.154
 set -euo pipefail
 
-PUBLIC_ORIGIN="${1:?Usage: $0 http://YOUR_LINODE_IP:8080 (no trailing slash)}"
-PUBLIC_ORIGIN="${PUBLIC_ORIGIN%/}"
+LINODE_IP="${1:?Usage: $0 LINODE_PUBLIC_IP}"
+API_PORT="${API_PORT:-8080}"
+API_ORIGIN="http://${LINODE_IP}:${API_PORT}"
 
 CLIENT="$(cd "$(dirname "$0")/../../client" && pwd)"
-WWW="${WWW_ROOT:-/var/www/peerlink}"
 
 cd "$CLIENT"
 export NODE_ENV=production
 export NEXT_PUBLIC_BASE_PATH=
-export NEXT_PUBLIC_API_BASE_URL="$PUBLIC_ORIGIN"
+export NEXT_PUBLIC_API_BASE_URL="$API_ORIGIN"
 
 npm ci
 npm run build
 
-mkdir -p "$WWW"
-rm -rf "${WWW:?}"/*
-cp -r out/* "$WWW/"
-echo "Installed UI to $WWW"
-echo "Start server with PEERLINK_WEB_ROOT=$WWW and open ${PUBLIC_ORIGIN}/"
+if [[ ! -f out/index.html ]]; then
+  echo "Build failed: missing out/index.html" >&2
+  exit 1
+fi
+
+echo "Built client/out — API URL: $API_ORIGIN"
+echo "Start UI: ./deploy/linode/run-client.sh  (port \${CLIENT_PORT:-3000})"
