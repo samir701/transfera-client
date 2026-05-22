@@ -7,12 +7,14 @@ on:
     paths:
       - 'client/**'
       - 'README.md'
+      - '.github/workflows/client_deploy.yml'
   pull_request:
     branches:
       - main
     paths:
       - 'client/**'
       - 'README.md'
+      - '.github/workflows/client_deploy.yml'
   workflow_dispatch:
     inputs:
       deploy:
@@ -57,10 +59,19 @@ jobs:
         working-directory: client
         run: npm ci
 
+      - name: Verify API base URL is set
+        if: github.event_name != 'pull_request'
+        run: |
+          if [ -z "${{ vars.NEXT_PUBLIC_API_BASE_URL }}" ]; then
+            echo "::error::Set repository variable NEXT_PUBLIC_API_BASE_URL (e.g. https://api.yourdomain.com)"
+            exit 1
+          fi
+
       - name: Build static site
         working-directory: client
         env:
           NODE_ENV: production
+          NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL }}
         run: npm run build
 
       - name: Setup GitHub Pages
