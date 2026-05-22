@@ -23,7 +23,8 @@ systemctl is-active peerlink-client 2>/dev/null || echo "peerlink-client: not ac
 echo
 
 echo "--- listening ports ---"
-ss -tlnp | grep -E ":${API_PORT}|:${CLIENT_PORT}|:3000|:80 " || echo "(no listeners on 80/3000/8080)"
+ss -tlnp | grep -E ":${API_PORT}|:${CLIENT_PORT}|:3000|:80 |serve|node" || echo "(no listeners on 80/3000/8080)"
+echo "(peerlink-client must log: Accepting connections at http://0.0.0.0:PORT — not localhost:RANDOM)"
 echo
 
 echo "--- local API ---"

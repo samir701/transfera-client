@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "build:linode": "NEXT_PUBLIC_BASE_PATH= next build",
-    "serve:linode": "serve out -l tcp://0.0.0.0:3000",
+    "serve:linode": "serve out --listen 0.0.0.0:3000",
     "start": "next start",
     "lint": "next lint"
   },
