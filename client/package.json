@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:linode": "NEXT_PUBLIC_BASE_PATH= next build",
     "start": "next start",
     "lint": "next lint"
   },

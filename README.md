@@ -46,6 +46,17 @@ npm run dev
 
 `NEXT_PUBLIC_API_BASE_URL` must point at the C++ server (required for static export / production hosting).
 
+## Deploy on Linode (UI + API on one VM)
+
+See **[docs/linode-deploy.md](docs/linode-deploy.md)** — Caddy serves the static UI and proxies `/api` to the C++ server. Use DuckDNS for free HTTPS.
+
+```bash
+chmod +x deploy/linode/*.sh
+JOBS=1 ./deploy/linode/build-server.sh
+./deploy/linode/install-services.sh
+./deploy/linode/build-ui.sh https://YOUR-SUBDOMAIN.duckdns.org
+```
+
 ## Technical manual (GitHub Pages)
 
 Full architecture documentation (threads, sockets, FDs, upload/download pipelines):

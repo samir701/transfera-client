@@ -1,0 +1,13 @@
+# Replace peerlink-api.duckdns.org with your free hostname (DuckDNS / sslip.io).
+# Install: cp Caddyfile.example /etc/caddy/Caddyfile && systemctl reload caddy
+
+peerlink-api.duckdns.org {
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:8080
+	}
+
+	root * /var/www/peerlink
+	file_server
+}

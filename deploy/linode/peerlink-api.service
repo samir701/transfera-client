@@ -1,0 +1,18 @@
+[Unit]
+Description=PeerLink P2P File Sharer API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/p2p_file_sharer_in_cpp/server
+Environment=PORT=8080
+ExecStart=/opt/p2p_file_sharer_in_cpp/server/build/server
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Install]
+WantedBy=multi-user.target
