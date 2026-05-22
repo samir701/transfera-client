@@ -41,11 +41,11 @@ export default function Home() {
   const handleFileUpload = async (file: File) => {
     setUploadedFile(file);
     setIsUploading(true);
-    
+
     try {
       const formData = new FormData();
       formData.append('file', file);
-      
+
       // Do not set Content-Type manually — axios/browser must add the boundary parameter.
       const response = await axios.post(apiUrl('/api/upload'), formData);
 
@@ -67,10 +67,10 @@ export default function Home() {
       setIsUploading(false);
     }
   };
-  
+
   const handleDownload = async (port: number) => {
     setIsDownloading(true);
-    
+
     try {
       const response = await axios.get(apiUrl(`/api/download/${port}`), {
         responseType: 'blob',
@@ -110,38 +110,36 @@ export default function Home() {
           </p>
         )}
         {apiOnline === true && (
-          <p className="mt-4 text-sm text-green-700">API connected ({API_BASE_URL})</p>
+          <p className="mt-4 text-sm text-green-700">API connected</p>
         )}
       </header>
-      
+
       <div className="bg-white rounded-lg shadow-lg p-6">
         <div className="flex border-b mb-6">
           <button
-            className={`px-4 py-2 font-medium ${
-              activeTab === 'upload'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
+            className={`px-4 py-2 font-medium ${activeTab === 'upload'
+              ? 'text-blue-600 border-b-2 border-blue-600'
+              : 'text-gray-500 hover:text-gray-700'
+              }`}
             onClick={() => setActiveTab('upload')}
           >
             Share a File
           </button>
           <button
-            className={`px-4 py-2 font-medium ${
-              activeTab === 'download'
-                ? 'text-blue-600 border-b-2 border-blue-600'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
+            className={`px-4 py-2 font-medium ${activeTab === 'download'
+              ? 'text-blue-600 border-b-2 border-blue-600'
+              : 'text-gray-500 hover:text-gray-700'
+              }`}
             onClick={() => setActiveTab('download')}
           >
             Receive a File
           </button>
         </div>
-        
+
         {activeTab === 'upload' ? (
           <div>
             <FileUpload onFileUpload={handleFileUpload} isUploading={isUploading} />
-            
+
             {uploadedFile && !isUploading && (
               <div className="mt-4 p-3 bg-gray-50 rounded-md">
                 <p className="text-sm text-gray-600">
@@ -149,20 +147,20 @@ export default function Home() {
                 </p>
               </div>
             )}
-            
+
             {isUploading && (
               <div className="mt-6 text-center">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
                 <p className="mt-2 text-gray-600">Uploading file...</p>
               </div>
             )}
-            
+
             <InviteCode port={port} />
           </div>
         ) : (
           <div>
             <FileDownload onDownload={handleDownload} isDownloading={isDownloading} />
-            
+
             {isDownloading && (
               <div className="mt-6 text-center">
                 <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
@@ -172,7 +170,7 @@ export default function Home() {
           </div>
         )}
       </div>
-      
+
       <footer className="mt-12 text-center text-gray-500 text-sm space-y-1">
         <p>PeerLink &copy; {new Date().getFullYear()} - Secure P2P File Sharing</p>
         <p>
