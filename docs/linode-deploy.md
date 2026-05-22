@@ -36,6 +36,17 @@ JOBS=1 ./deploy/linode/build-server.sh
 ./deploy/linode/verify-ui.sh
 ```
 
+If the UI build fails with `Cannot find module 'tailwindcss'` or `@/components/*`, run from repo root:
+
+```bash
+cd client
+rm -rf node_modules .next
+npm ci
+NODE_ENV=production NEXT_PUBLIC_BASE_PATH= NEXT_PUBLIC_API_BASE_URL=http://YOUR_IP:8080 npm run build
+```
+
+Do not run `npm ci` with `NODE_ENV=production` (skips dev/build deps).
+
 ### Start
 
 ```bash

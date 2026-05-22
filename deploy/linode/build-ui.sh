@@ -10,12 +10,18 @@ API_ORIGIN="http://${LINODE_IP}:${API_PORT}"
 CLIENT="$(cd "$(dirname "$0")/../../client" && pwd)"
 
 cd "$CLIENT"
-export NODE_ENV=production
+
+if [[ ! -f src/app/page.tsx ]] || [[ ! -d src/components ]]; then
+  echo "Missing client/src — run git pull in /opt/p2p_file_sharer_in_cpp" >&2
+  exit 1
+fi
+
 export NEXT_PUBLIC_BASE_PATH=
 export NEXT_PUBLIC_API_BASE_URL="$API_ORIGIN"
 
+# Install devDependencies (tailwind, typescript). Do NOT set NODE_ENV=production before npm ci.
 npm ci
-npm run build
+NODE_ENV=production npm run build
 
 if [[ ! -f out/index.html ]]; then
   echo "Build failed: missing out/index.html" >&2
