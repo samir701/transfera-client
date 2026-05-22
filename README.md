@@ -45,3 +45,12 @@ npm run dev
 3. Upload a file, share the invite code, download on another tab/machine (same host for P2P peer socket).
 
 `NEXT_PUBLIC_API_BASE_URL` must point at the C++ server (required for static export / production hosting).
+
+## Technical manual (GitHub Pages)
+
+Full architecture documentation (threads, sockets, FDs, upload/download pipelines):
+
+- **Manual:** https://dasanik2001.github.io/p2p_file_sharer_in_cpp/manual/
+- **Live app:** https://dasanik2001.github.io/p2p_file_sharer_in_cpp/
+
+Source: `client/public/manual/` (deployed with the client static build).

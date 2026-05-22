@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>main() Lifecycle — PeerLink Manual</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/manual.css" />
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="brand">PeerLink Manual</div>
+      <div class="deploy-links">
+        <a id="deploy-app-link" href="#">Live app</a>
+        <a id="deploy-manual-link" href="#">This manual</a>
+      </div>
+      <ul id="manual-nav-list"></ul>
+    </nav>
+    <main class="content">
+      <h1>main() &amp; process lifecycle</h1>
+      <p class="lead">Entry point: <code>server/src/main_runner.cpp</code>. One OS process, no <code>fork()</code> of the API.</p>
+
+      <h2>1. Full main() source flow</h2>
+      <pre><code>int main() {
+    const int port = readPortFromEnv();   // default 8080
+
+    std::signal(SIGINT, onSignal);
+    std::signal(SIGTERM, onSignal);
+
+    FileController controller(port);
+    if (!controller.start()) return 1;
+
+    while (g_keepRunning)
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    controller.stop();
+    return 0;
+}</code></pre>
+      <span class="cite">server/src/main_runner.cpp:39-58</span>
+
+      <h2>2. Signal handling</h2>
+      <pre><code>std::atomic&lt;bool&gt; g_keepRunning{true};
+
+void onSignal(int) { g_keepRunning = false; }</code></pre>
+      <span class="cite">server/src/main_runner.cpp:12-17</span>
+      <p>
+        <span class="tip" data-tip="SIGINT: Ctrl+C. SIGTERM: kill, systemd stop. Async-signal-safe handler only sets atomic flag.">SIGINT / SIGTERM</span>
+        do not call <code>stop()</code> inside the handler — only flip a flag. Actual teardown runs on the main thread after the loop.
+      </p>
+
+      <h2>3. The sleep loop (why it exists)</h2>
+      <pre><code>while (g_keepRunning)
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));</code></pre>
+      <span class="cite">server/src/main_runner.cpp:53-54</span>
+      <table>
+        <thead><tr><th>Question</th><th>Answer</th></tr></thead>
+        <tbody>
+          <tr><td>Why not block in main?</td><td>HTTP <code>listen</code> runs on <code>serverThread_</code></td></tr>
+          <tr><td>Why sleep?</td><td>Avoid 100% CPU busy-wait while waiting for shutdown</td></tr>
+          <tr><td>Why 200 ms?</td><td>Human-scale shutdown latency; not tied to I/O</td></tr>
+        </tbody>
+      </table>
+
+      <h2>4. Process spawn map</h2>
+      <div class="diagram">OS Process: ./build/server (single PID)
+│
+├─ Thread: main
+│    └─ sleep until g_keepRunning == false → controller.stop()
+│
+├─ Thread: serverThread_ (FileController)
+│    └─ httplib listen loop → accept → enqueue to ThreadPool
+│
+├─ Thread(s): httplib ThreadPool workers (N ≈ CPU count)
+│    └─ handleUpload / handleDownload / health
+│
+└─ Thread(s): detached std::thread per upload
+     └─ FileSharer::startFileServer(port) — blocks until one client served</div>
+
+      <h2>5. Child processes?</h2>
+      <p><strong>None</strong> for the API. The project does not call <code>fork()</code>, <code>exec()</code>, or <code>system()</code> for serving.
+      “Child” in conversation sometimes means <strong>detached threads</strong> — still same process, same address space.</p>
+
+      <h2>6. Destructor safety</h2>
+      <pre><code>FileController::~FileController() { stop(); }</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:100</span>
+      <p>If <code>main</code> returns without <code>stop()</code>, destructor still joins the server thread.</p>
+
+      <h2>7. Environment: PORT</h2>
+      <pre><code>constexpr int kDefaultPort = 8080;
+if (const char *env = std::getenv("PORT"); env && *env)
+    port = std::stoi(env);</code></pre>
+      <span class="cite">server/src/main_runner.cpp:19-36</span>
+    </main>
+  </div>
+  <script src="assets/js/manual.js"></script>
+</body>
+</html>

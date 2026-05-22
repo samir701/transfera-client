@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Syntax Glossary — PeerLink Manual</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/manual.css" />
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="brand">PeerLink Manual</div>
+      <div class="deploy-links">
+        <a id="deploy-app-link" href="#">Live app</a>
+        <a id="deploy-manual-link" href="#">This manual</a>
+      </div>
+      <ul id="manual-nav-list"></ul>
+    </nav>
+    <main class="content">
+      <h1>Syntax glossary</h1>
+      <p class="lead">Hover <span class="tip" data-tip="Dotted underline = hover for definition in this manual's CSS.">dotted terms</span> in other chapters. Table: construct → meaning → why PeerLink uses it → scenario.</p>
+
+      <h2>C++ — process &amp; signals</h2>
+      <table>
+        <thead><tr><th>Syntax</th><th>What</th><th>Why here</th><th>Scenario</th></tr></thead>
+        <tbody>
+          <tr><td><code>std::signal(SIGINT, onSignal)</code></td><td>Register C handler for Ctrl+C</td><td>Graceful shutdown flag</td><td>User stops server in terminal</td></tr>
+          <tr><td><code>std::atomic&lt;bool&gt;</code></td><td>Thread-safe flag</td><td>Signal handler + main both touch <code>g_keepRunning</code></td><td>Avoid data race on bool</td></tr>
+          <tr><td><code>std::getenv("PORT")</code></td><td>Read environment variable</td><td>Configurable API port</td><td><code>PORT=9000 ./server</code></td></tr>
+        </tbody>
+      </table>
+
+      <h2>C++ — threads</h2>
+      <table>
+        <thead><tr><th>Syntax</th><th>What</th><th>Why here</th><th>Scenario</th></tr></thead>
+        <tbody>
+          <tr><td><code>std::thread(fn)</code></td><td>Start OS thread</td><td>HTTP listen off main thread</td><td>Keep main free for signals</td></tr>
+          <tr><td><code>.join()</code></td><td>Wait for thread end</td><td>Clean shutdown of server thread</td><td><code>stop()</code> before exit</td></tr>
+          <tr><td><code>.detach()</code></td><td>Fire-and-forget thread</td><td>Return upload HTTP response immediately</td><td>P2P accept runs in background</td></tr>
+          <tr><td><code>thread_local</code></td><td>Per-thread storage</td><td>PRNG without mutex</td><td>Random ports / filenames</td></tr>
+          <tr><td><code>running_.exchange(true)</code></td><td>Atomic swap</td><td>Detect double <code>start()</code></td><td>Idempotent lifecycle</td></tr>
+        </tbody>
+      </table>
+
+      <h2>C++ — sockets</h2>
+      <table>
+        <thead><tr><th>Syntax</th><th>What</th><th>Why here</th><th>Scenario</th></tr></thead>
+        <tbody>
+          <tr><td><code>::socket(...)</code></td><td>Create FD</td><td>P2P + download client</td><td>New TCP endpoint</td></tr>
+          <tr><td><code>::bind</code></td><td>Attach port to FD</td><td>P2P listen on invite code</td><td>Before accept</td></tr>
+          <tr><td><code>::listen</code></td><td>Passive socket</td><td>Wait for connections</td><td>P2P server ready</td></tr>
+          <tr><td><code>::accept</code></td><td>Take one connection</td><td>Single downloader model</td><td>One file per invite</td></tr>
+          <tr><td><code>::connect</code></td><td>Active open</td><td>HTTP proxies to P2P</td><td>Download handler</td></tr>
+          <tr><td><code>::send / ::recv</code></td><td>TCP I/O</td><td>Byte stream transfer</td><td>Header + file body</td></tr>
+          <tr><td><code>::close(fd)</code></td><td>Release FD</td><td>Prevent leaks</td><td>After transfer / errors</td></tr>
+          <tr><td><code>reinterpret_cast&lt;sockaddr*&gt;</code></td><td>Pointer conversion</td><td>POSIX API generic sockaddr</td><td>bind/connect/accept</td></tr>
+        </tbody>
+      </table>
+
+      <h2>C++ — filesystem &amp; I/O</h2>
+      <table>
+        <thead><tr><th>Syntax</th><th>What</th><th>Why here</th><th>Scenario</th></tr></thead>
+        <tbody>
+          <tr><td><code>namespace fs = std::filesystem</code></td><td>Path API alias</td><td>Cross-platform paths</td><td>upload dir, temp files</td></tr>
+          <tr><td><code>fs::path::filename()</code></td><td>Strip directory</td><td>Prevent path traversal in names</td><td>User sends <code>../../etc/passwd</code></td></tr>
+          <tr><td><code>std::ofstream</code></td><td>Write file</td><td>Persist upload</td><td>Binary safe with <code>ios::binary</code></td></tr>
+          <tr><td><code>std::ifstream</code></td><td>Read file</td><td>Send P2P / build HTTP body</td><td>Download path</td></tr>
+        </tbody>
+      </table>
+
+      <h2>TypeScript / React</h2>
+      <table>
+        <thead><tr><th>Syntax</th><th>What</th><th>Why here</th><th>Scenario</th></tr></thead>
+        <tbody>
+          <tr><td><code>'use client'</code></td><td>Client component boundary</td><td>Hooks in page</td><td>Next.js App Router</td></tr>
+          <tr><td><code>useState&lt;T&gt;</code></td><td>UI state</td><td>port, loading flags</td><td>Re-render on upload done</td></tr>
+          <tr><td><code>useEffect(fn, [])</code></td><td>Run on mount</td><td>Health poll API</td><td>Show online/offline banner</td></tr>
+          <tr><td><code>FormData</code></td><td>Multipart builder</td><td>File upload body</td><td><code>append('file', file)</code></td></tr>
+          <tr><td><code>responseType: 'blob'</code></td><td>Binary axios response</td><td>Download without corrupting bytes</td><td>PDF/images</td></tr>
+          <tr><td><code>process.env.NEXT_PUBLIC_*</code></td><td>Build-time public env</td><td>API URL in static export</td><td>Production points to API host</td></tr>
+        </tbody>
+      </table>
+    </main>
+  </div>
+  <script src="assets/js/manual.js"></script>
+</body>
+</html>

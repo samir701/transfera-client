@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Frontend — PeerLink Manual</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/manual.css" />
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="brand">PeerLink Manual</div>
+      <div class="deploy-links">
+        <a id="deploy-app-link" href="#">Live app</a>
+        <a id="deploy-manual-link" href="#">This manual</a>
+      </div>
+      <ul id="manual-nav-list"></ul>
+    </nav>
+    <main class="content">
+      <h1>Frontend (Next.js)</h1>
+      <p class="lead">Static-export React app in <code>client/</code>. Talks to C++ API via cross-origin HTTP.</p>
+
+      <h2>1. Entry: <code>page.tsx</code></h2>
+      <pre><code>'use client';
+
+export default function Home() {
+  const [port, setPort] = useState&lt;number | null&gt;(null);
+  const [apiOnline, setApiOnline] = useState&lt;boolean | null&gt;(null);
+
+  useEffect(() => {
+    axios.get(apiUrl('/api/health'), { timeout: 3000 });
+  }, []);
+}</code></pre>
+      <span class="cite">client/src/app/page.tsx:1-38</span>
+      <p>
+        <span class="tip" data-tip="'use client' marks a Client Component in Next.js App Router — hooks and browser APIs allowed.">use client</span>
+        is required because the page uses <code>useState</code>, <code>useEffect</code>, and <code>axios</code> in the browser.
+      </p>
+
+      <h2>2. API base URL</h2>
+      <pre><code>export const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ||
+  'http://127.0.0.1:8080';</code></pre>
+      <span class="cite">client/src/lib/api.ts:6-8</span>
+      <p>
+        Dev: Next on <code>:3000</code>, API on <code>:8080</code> → <strong>cross-origin</strong>. Server must send CORS headers.
+        Production static export cannot proxy unless you set <code>NEXT_PUBLIC_API_BASE_URL</code> to a reachable API host.
+      </p>
+
+      <h2>3. Upload (critical detail)</h2>
+      <pre><code>const formData = new FormData();
+formData.append('file', file);
+const response = await axios.post(apiUrl('/api/upload'), formData);
+// NO manual Content-Type header</code></pre>
+      <span class="cite">client/src/app/page.tsx:45-49</span>
+      <div class="callout danger">
+        Never set <code>Content-Type: multipart/form-data</code> manually. The browser must add
+        <code>boundary=...</code>. Missing boundary breaks server parsing.
+      </div>
+
+      <h2>4. Download & filename</h2>
+      <pre><code>const response = await axios.get(apiUrl(`/api/download/${port}`), {
+  responseType: 'blob',
+});
+const filename = resolveDownloadFilename(response.headers);</code></pre>
+      <span class="cite">client/src/app/page.tsx:74-78</span>
+      <p>
+        <code>responseType: 'blob'</code> keeps binary data out of UTF-8 string corruption.
+        <code>Access-Control-Expose-Headers</code> on the server lets JS read <code>Content-Disposition</code> / <code>X-Filename</code>.
+      </p>
+      <span class="cite">server/src/services/fileController.cpp:207-209</span>
+
+      <h2>5. Components</h2>
+      <table>
+        <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td><code>FileUpload.tsx</code></td><td>react-dropzone → calls <code>onFileUpload(file)</code></td></tr>
+          <tr><td><code>InviteCode.tsx</code></td><td>Displays numeric invite port after upload</td></tr>
+          <tr><td><code>FileDownload.tsx</code></td><td>User enters port → triggers download</td></tr>
+        </tbody>
+      </table>
+
+      <h2>6. GitHub Pages build</h2>
+      <p>
+        <code>next.config.js</code> sets <code>output: 'export'</code> and <code>basePath: '/p2p_file_sharer_in_cpp'</code> in production.
+        Manual pages live under <code>client/public/manual/</code> → copied to <code>out/manual/</code> on build.
+      </p>
+      <span class="cite">client/next.config.js:5-11</span>
+    </main>
+  </div>
+  <script src="assets/js/manual.js"></script>
+</body>
+</html>

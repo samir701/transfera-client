@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PeerLink Technical Manual — Home</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/manual.css" />
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="brand">PeerLink Manual</div>
+      <div class="deploy-links">
+        <strong>Deployed URLs</strong>
+        <a id="deploy-app-link" href="#" target="_blank" rel="noopener">Live app (GitHub Pages)</a>
+        <a id="deploy-manual-link" href="#" target="_blank" rel="noopener">This manual (GitHub Pages)</a>
+      </div>
+      <ul id="manual-nav-list"></ul>
+    </nav>
+    <main class="content">
+      <h1>PeerLink — Technical Architecture Manual</h1>
+      <p class="lead">
+        A line-by-line systems guide to the P2P file sharer: Next.js frontend, C++ HTTP API (cpp-httplib),
+        ephemeral TCP file servers, threads, sockets, and file descriptors.
+      </p>
+
+      <div class="callout ok">
+        <strong>Audience:</strong> Readable by beginners; depth suitable for graduate-level systems review.
+        Hover dotted terms (<span class="tip" data-tip="Example: hover me for a short definition.">like this</span>) for inline tooltips.
+      </div>
+
+      <h2>What this project does</h2>
+      <p>
+        <strong>PeerLink</strong> lets a user upload a file through a web UI. The C++ server stores the file,
+        picks a random high port (invite code), and starts a <em>dedicated TCP listener</em> for that file.
+        Another user enters the invite code; the HTTP API connects to the TCP server, pulls the bytes,
+        and returns them as a browser download.
+      </p>
+
+      <div class="diagram">┌─────────────────┐     HTTP :8080      ┌──────────────────────┐
+│  Next.js client │ ◄──────────────────► │  FileController      │
+│  (browser)      │   /api/upload        │  (cpp-httplib)       │
+│                 │   /api/download/N    │                      │
+└────────┬────────┘                      └──────────┬───────────┘
+         │                                          │
+         │  invite code N                           │ spawn detached thread
+         │                                          ▼
+         │                               ┌──────────────────────┐
+         └──────── download via HTTP ────►│  FileSharer TCP      │
+              (proxy to 127.0.0.1:N)     │  listen :N, send file│
+                                         └──────────────────────┘</div>
+
+      <h2>Repository map</h2>
+      <table>
+        <thead><tr><th>Path</th><th>Role</th></tr></thead>
+        <tbody>
+          <tr><td><code>client/</code></td><td>Next.js 14 static export UI</td></tr>
+          <tr><td><code>server/</code></td><td>C++20 API + P2P TCP servers</td></tr>
+          <tr><td><code>server/src/main_runner.cpp</code></td><td>Process entry, signals, main loop</td></tr>
+          <tr><td><code>server/src/services/fileController.cpp</code></td><td>HTTP routes, upload/download</td></tr>
+          <tr><td><code>server/src/services/fileSharer.cpp</code></td><td>Per-file TCP server</td></tr>
+          <tr><td><code>client/public/manual/</code></td><td>This documentation (deployed with Pages)</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Manual chapters</h2>
+      <ol>
+        <li><a href="architecture.html">System architecture</a> — components, ports, data planes</li>
+        <li><a href="frontend.html">Frontend</a> — React, axios, CORS, FormData</li>
+        <li><a href="http-server.html">HTTP server</a> — FileController, httplib, routes</li>
+        <li><a href="main-lifecycle.html">main() lifecycle</a> — start, signal handler, shutdown</li>
+        <li><a href="threads.html">Threads & concurrency</a> — join vs detach, atomics, pools</li>
+        <li><a href="sockets-fds.html">Sockets & FDs</a> — socket/bind/listen/accept, recv/send</li>
+        <li><a href="upload-flow.html">Upload pipeline</a> — multipart → disk → invite port</li>
+        <li><a href="download-flow.html">Download pipeline</a> — HTTP → TCP → attachment</li>
+        <li><a href="p2p-sharer.html">P2P FileSharer</a> — offerFile, startFileServer</li>
+        <li><a href="syntax.html">Syntax glossary</a> — C++/TS constructs with scenarios</li>
+        <li><a href="operations.html">Operations</a> — run, kill, zombies, GitHub Pages</li>
+      </ol>
+
+      <h2>Quick start (operators)</h2>
+      <pre><code>cd server && ./scripts/run.sh    # API on :8080
+cd client && npm run dev        # UI on :3000
+curl http://127.0.0.1:8080/api/health</code></pre>
+      <span class="cite">server/scripts/run.sh — kills stale :8080 before start</span>
+    </main>
+  </div>
+  <script src="assets/js/manual.js"></script>
+</body>
+</html>

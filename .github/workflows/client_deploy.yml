@@ -6,11 +6,13 @@ on:
       - main
     paths:
       - 'client/**'
+      - 'README.md'
   pull_request:
     branches:
       - main
     paths:
       - 'client/**'
+      - 'README.md'
   workflow_dispatch:
     inputs:
       deploy:

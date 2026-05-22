@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Upload Pipeline — PeerLink Manual</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/manual.css" />
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="brand">PeerLink Manual</div>
+      <div class="deploy-links">
+        <a id="deploy-app-link" href="#">Live app</a>
+        <a id="deploy-manual-link" href="#">This manual</a>
+      </div>
+      <ul id="manual-nav-list"></ul>
+    </nav>
+    <main class="content">
+      <h1>Upload pipeline</h1>
+      <p class="lead">POST <code>/api/upload</code> — from browser bytes to invite port JSON.</p>
+
+      <h2>1. Sequence diagram</h2>
+      <div class="diagram">Browser                httplib worker          FileController        Disk        FileSharer
+   │                         │                      │                  │              │
+   │ POST multipart          │                      │                  │              │
+   ├────────────────────────►│ read body → form     │                  │              │
+   │                         ├─────────────────────►│ handleUpload     │              │
+   │                         │                      ├─────────────────►│ write file   │
+   │                         │                      ├──────────────────────────────────►│ offerFile()
+   │                         │                      │ spawn detached thread ───────────►│ startFileServer
+   │                         │◄─────────────────────┤ 200 {port}       │              │
+   │◄────────────────────────┤                      │                  │              │</div>
+
+      <h2>2. Validation gates</h2>
+      <ol>
+        <li>Method must be POST — <span class="cite">fileController.cpp:256-260</span></li>
+        <li>Content-Type contains <code>multipart/form-data</code> — <span class="cite">263-269</span></li>
+        <li><code>req.form.has_file("file")</code> — field name must be <code>file</code> — <span class="cite">274-280</span></li>
+        <li>Non-empty <code>uploaded.content</code> — <span class="cite">284-288</span></li>
+      </ol>
+
+      <h2>3. Filename handling</h2>
+      <pre><code>sanitizeDisplayFilename(filename);  // strip paths
+makeUniqueName(displayName);         // randomHex(32) + "_" + stem + ext
+const fs::path filePath = uploadDir_ / uniqueFilename;</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:227-249, 293-296</span>
+      <p>Extension preserved via <code>fs::path::extension()</code> — e.g. <code>report.pdf</code> → <code>{hex}_report.pdf</code>.</p>
+
+      <h2>4. offerFile + detach</h2>
+      <pre><code>const int port = fileSharer_.offerFile(filePath.string(), displayName);
+std::thread([this, port]() { fileSharer_.startFileServer(port); }).detach();
+res.set_content("{\"port\": " + std::to_string(port) + "}", "application/json");</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:306-314</span>
+
+      <h2>5. Port generation</h2>
+      <pre><code>const int port = server::utils::generateCode();  // 49152 .. 65534
+if (available_files_.find(port) == end) emplace...</code></pre>
+      <span class="cite">server/src/utils/uploadUtils.cpp:8-16</span>
+      <span class="cite">server/src/services/fileSharer.cpp:80-90</span>
+    </main>
+  </div>
+  <script src="assets/js/manual.js"></script>
+</body>
+</html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sockets & File Descriptors — PeerLink Manual</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/manual.css" />
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="brand">PeerLink Manual</div>
+      <div class="deploy-links">
+        <a id="deploy-app-link" href="#">Live app</a>
+        <a id="deploy-manual-link" href="#">This manual</a>
+      </div>
+      <ul id="manual-nav-list"></ul>
+    </nav>
+    <main class="content">
+      <h1>Sockets &amp; file descriptors</h1>
+      <p class="lead">In Unix, a <span class="tip" data-tip="File descriptor (FD): small integer handle for an open I/O object (file, socket, pipe).">file descriptor</span> is an integer handle. Sockets are FDs; so are open files.</p>
+
+      <h2>1. FD lifecycle in PeerLink</h2>
+      <table>
+        <thead><tr><th>FD variable</th><th>Created by</th><th>Represents</th><th>Closed by</th></tr></thead>
+        <tbody>
+          <tr><td>httplib <code>svr_sock_</code></td><td>bind :8080</td><td>HTTP listen socket</td><td><code>server_.stop()</code></td></tr>
+          <tr><td>httplib client sock</td><td>accept</td><td>One HTTP connection</td><td>end of request</td></tr>
+          <tr><td><code>server_fd</code></td><td><code>socket()</code></td><td>P2P listen on invite port</td><td><code>close(server_fd)</code></td></tr>
+          <tr><td><code>client_fd</code></td><td><code>accept</code></td><td>P2P data connection</td><td><code>close(client_fd)</code></td></tr>
+          <tr><td><code>sock</code> in download</td><td><code>socket()+connect</code></td><td>HTTP→TCP proxy client</td><td><code>close(sock)</code></td></tr>
+          <tr><td>File (ifstream/ofstream)</td><td>open path</td><td>Disk file</td><td>destructor</td></tr>
+        </tbody>
+      </table>
+
+      <h2>2. P2P server socket creation (step by step)</h2>
+      <pre><code>const int server_fd = ::socket(AF_INET, SOCK_STREAM, 0);
+::setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+
+sockaddr_in addr{};
+addr.sin_family = AF_INET;
+addr.sin_addr.s_addr = htonl(INADDR_ANY);
+addr.sin_port = htons(static_cast&lt;uint16_t&gt;(port));
+
+::bind(server_fd, reinterpret_cast&lt;sockaddr*&gt;(&amp;addr), sizeof(addr));
+::listen(server_fd, 1);
+const int client_fd = ::accept(server_fd, ...);</code></pre>
+      <span class="cite">server/src/services/fileSharer.cpp:105-151</span>
+
+      <h3>Syntax tooltips</h3>
+      <ul>
+        <li><code>AF_INET</code> — <span class="tip" data-tip="IPv4 address family.">IPv4</span></li>
+        <li><code>SOCK_STREAM</code> — <span class="tip" data-tip="TCP: reliable byte stream.">TCP</span></li>
+        <li><code>SO_REUSEADDR</code> — <span class="tip" data-tip="Allows quick re-bind to same port after close; avoids TIME_WAIT pain during dev.">reuse port after close</span></li>
+        <li><code>htons</code> — <span class="tip" data-tip="Host TO Network Short: converts port to big-endian for wire format.">port endianness</span></li>
+        <li><code>INADDR_ANY</code> — <span class="tip" data-tip="Bind all local interfaces (0.0.0.0).">listen on all interfaces</span></li>
+      </ul>
+
+      <h2>3. Read / write paths</h2>
+      <h3>TCP send (P2P)</h3>
+      <pre><code>ssize_t sent = ::send(client_fd, p, remaining, 0);</code></pre>
+      <span class="cite">server/src/services/fileSharer.cpp:36-44</span>
+      <h3>TCP recv (download proxy)</h3>
+      <pre><code>ssize_t n = ::recv(fd, buffer, sizeof(buffer), 0);</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:72</span>
+      <p><code>recv</code> return 0 means peer closed connection (EOF).</p>
+
+      <h2>4. Download handler client socket</h2>
+      <pre><code>const int sock = ::socket(AF_INET, SOCK_STREAM, 0);
+::inet_pton(AF_INET, "127.0.0.1", &amp;addr.sin_addr);
+::connect(sock, reinterpret_cast&lt;sockaddr*&gt;(&amp;addr), sizeof(addr));</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:361-377</span>
+      <p>HTTP worker connects to <strong>localhost</strong> P2P server — same machine only.</p>
+
+      <h2>5. FD leak scenarios</h2>
+      <ul>
+        <li>Early <code>return</code> without <code>close(sock)</code> — mitigated on error paths in download handler.</li>
+        <li>Multiple stale <code>server</code> processes on :8080 — not FD leak but port conflict; use <code>scripts/run.sh</code>.</li>
+        <li>Detached P2P thread still in <code>accept</code> — holds <code>server_fd</code> until one client connects and transfer completes.</li>
+      </ul>
+    </main>
+  </div>
+  <script src="assets/js/manual.js"></script>
+</body>
+</html>

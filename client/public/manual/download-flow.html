@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Download Pipeline — PeerLink Manual</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/manual.css" />
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="brand">PeerLink Manual</div>
+      <div class="deploy-links">
+        <a id="deploy-app-link" href="#">Live app</a>
+        <a id="deploy-manual-link" href="#">This manual</a>
+      </div>
+      <ul id="manual-nav-list"></ul>
+    </nav>
+    <main class="content">
+      <h1>Download pipeline</h1>
+      <p class="lead">GET <code>/api/download/{port}</code> — HTTP proxy reads local TCP P2P stream.</p>
+
+      <h2>1. Parse invite port from URL</h2>
+      <pre><code>bool parsePortFromPath(const std::string &path, int &outPort) {
+    outPort = std::stoi(path.substr(slash + 1));
+    return outPort > 0 && outPort <= 65535;
+}</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:323-337</span>
+      <p>Regex route <code>/api/download/(\d+)</code> also matches; handler uses <code>req.path</code>.</p>
+
+      <h2>2. Wire protocol on TCP</h2>
+      <pre><code>// First line (text):
+Filename: report.pdf\n
+// Then raw file bytes until connection close</code></pre>
+      <span class="cite">server/src/services/fileSharer.cpp:29-30</span>
+      <pre><code>recvLine(sock, header);           // read until '\n'
+recvAllToFile(sock, tempFile);   // read until EOF</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:46-81, 385-411</span>
+
+      <h2>3. Filename resolution order</h2>
+      <ol>
+        <li><code>fileSharer_.tryGetDownloadName(peerPort)</code> — catalog from upload</li>
+        <li>Override from TCP header if <code>Filename: ...</code> present</li>
+        <li>Default <code>downloaded-file</code></li>
+      </ol>
+      <span class="cite">server/src/services/fileController.cpp:380-400</span>
+
+      <h2>4. HTTP response to browser</h2>
+      <pre><code>res.set_header("Content-Disposition", "attachment; filename=\"" + filename + "\"");
+res.set_header("X-Filename", filename);
+res.set_content(buffer.str(), "application/octet-stream");</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:425-429</span>
+      <p>CORS expose headers allow axios to read these cross-origin — <span class="cite">207-209</span>.</p>
+
+      <h2>5. Race: download before P2P ready</h2>
+      <div class="callout warn">
+        If client downloads before detached thread calls <code>bind()</code>, <code>connect()</code> fails → HTTP 500.
+        Mitigation: wait until upload UI shows invite code; optional retry in client (not implemented).
+      </div>
+    </main>
+  </div>
+  <script src="assets/js/manual.js"></script>
+</body>
+</html>

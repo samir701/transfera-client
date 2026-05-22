@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>System Architecture — PeerLink Manual</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/manual.css" />
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="brand">PeerLink Manual</div>
+      <div class="deploy-links">
+        <strong>Deployed URLs</strong>
+        <a id="deploy-app-link" href="#">Live app</a>
+        <a id="deploy-manual-link" href="#">This manual</a>
+      </div>
+      <ul id="manual-nav-list"></ul>
+    </nav>
+    <main class="content">
+      <h1>System architecture</h1>
+      <p class="lead">Two network planes: <strong>HTTP control plane</strong> (port 8080) and <strong>TCP data plane</strong> (dynamic ports 49152–65534).</p>
+
+      <h2>1. Architectural layers</h2>
+      <table>
+        <thead><tr><th>Layer</th><th>Technology</th><th>Responsibility</th></tr></thead>
+        <tbody>
+          <tr><td>Presentation</td><td>Next.js + React</td><td>Upload UI, invite code display, download trigger</td></tr>
+          <tr><td>API gateway</td><td>cpp-httplib</td><td>REST-like endpoints, CORS, multipart parsing</td></tr>
+          <tr><td>Session / catalog</td><td><code>FileSharer::available_files_</code></td><td>Maps invite port → path + display name</td></tr>
+          <tr><td>Data transfer</td><td>Berkeley sockets</td><td>One-shot TCP send per invite port</td></tr>
+          <tr><td>Storage</td><td>Filesystem</td><td><code>$TMPDIR/peerlink-uploads/</code></td></tr>
+        </tbody>
+      </table>
+
+      <h2>2. Port topology</h2>
+      <div class="diagram">Port 8080 (fixed)     — HTTP API (always)
+Port 49152–65534      — Ephemeral P2P (one per uploaded file, random)
+
+Example timeline:
+  T0  POST /api/upload  → returns {"port": 58341}
+  T1  Thread detached → TCP bind 0.0.0.0:58341, listen(1)
+  T2  GET /api/download/58341 → HTTP handler connect 127.0.0.1:58341
+  T3  TCP sends "Filename: doc.pdf\n" + bytes
+  T4  HTTP responds with attachment to browser</div>
+
+      <h2>3. Why two protocols?</h2>
+      <p>
+        Browsers cannot safely expose raw TCP to JavaScript for arbitrary peer transfer. The design mirrors the original Java version:
+        HTTP for <em>orchestration</em>, TCP for <em>bulk bytes</em>. The HTTP download handler acts as a <strong>local proxy</strong>
+        (<code>connect(127.0.0.1, peerPort)</code>) so the browser still uses familiar <code>GET</code> + blob download.
+      </p>
+
+      <h2>4. Class diagram (logical)</h2>
+      <pre><code>main_runner.cpp
+  └── FileController (services)
+        ├── httplib::Server server_
+        ├── FileSharer fileSharer_
+        ├── std::thread serverThread_   // HTTP listen loop
+        └── uploadDir_
+
+FileSharer (service)
+  └── unordered_map&lt;int, SharedFile&gt;
+        SharedFile { path, downloadName }</code></pre>
+      <span class="cite">server/include/server/service/fileController.hpp:14-51</span>
+      <span class="cite">server/include/server/service/fileSharer.hpp:9-27</span>
+
+      <h2>5. Sequence: end-to-end share</h2>
+      <ol>
+        <li>User drops file → <code>FormData</code> POST to <code>/api/upload</code></li>
+        <li>FileController writes disk, calls <code>offerFile</code> → random free port</li>
+        <li><span class="tip" data-tip="detach(): thread runs independently; not joined by creator. OS thread becomes 'detached'.">detach()</span> starts <code>startFileServer(port)</code></li>
+        <li>UI shows invite port</li>
+        <li>Receiver enters port → <code>GET /api/download/{port}</code></li>
+        <li>HTTP worker connects TCP, reads file, returns <code>Content-Disposition</code></li>
+      </ol>
+
+      <div class="callout warn">
+        <strong>Not true P2P across the Internet:</strong> TCP servers bind locally; download proxy uses
+        <code>127.0.0.1</code>. Remote peers would need the host IP and firewall rules — out of scope for current code.
+      </div>
+    </main>
+  </div>
+  <script src="assets/js/manual.js"></script>
+</body>
+</html>

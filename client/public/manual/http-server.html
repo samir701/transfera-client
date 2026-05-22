@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HTTP Server — PeerLink Manual</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/manual.css" />
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="brand">PeerLink Manual</div>
+      <div class="deploy-links">
+        <a id="deploy-app-link" href="#">Live app</a>
+        <a id="deploy-manual-link" href="#">This manual</a>
+      </div>
+      <ul id="manual-nav-list"></ul>
+    </nav>
+    <main class="content">
+      <h1>HTTP server (FileController)</h1>
+      <p class="lead"><code>FileController</code> wraps <span class="tip" data-tip="cpp-httplib: single-header C++ HTTP library. Server class listens and dispatches routes.">httplib::Server</span> on port 8080 (default).</p>
+
+      <h2>1. Construction</h2>
+      <pre><code>FileController::FileController(int port)
+    : port_(port),
+      uploadDir_(getTempDir() / "peerlink-uploads")
+{
+    fs::create_directories(uploadDir_, ec);
+    server_.set_read_timeout(120, 0);
+    server_.set_write_timeout(120, 0);
+    registerRoutes();
+}</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:86-98</span>
+
+      <h2>2. Registered routes</h2>
+      <table>
+        <thead><tr><th>Method</th><th>Path</th><th>Handler</th></tr></thead>
+        <tbody>
+          <tr><td>OPTIONS</td><td><code>/.*</code></td><td>CORS preflight</td></tr>
+          <tr><td>GET</td><td><code>/api/health</code></td><td>JSON health</td></tr>
+          <tr><td>POST</td><td><code>/api/upload</code></td><td><code>handleUpload</code></td></tr>
+          <tr><td>GET</td><td><code>/api/download/(\d+)</code></td><td><code>handleDownload</code></td></tr>
+        </tbody>
+      </table>
+      <span class="cite">server/src/services/fileController.cpp:165-197</span>
+
+      <h2>3. Start: bind then listen (background thread)</h2>
+      <pre><code>serverThread_ = std::thread([this] {
+    if (!server_.bind_to_port("0.0.0.0", port_)) { /* error */ return; }
+    listen_ok_ = true;
+    server_.listen_after_bind();
+});
+// main polls listen_ok_ up to ~1s</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:109-141</span>
+      <p>
+        <span class="tip" data-tip="bind_to_port() reserves the TCP port. listen_after_bind() accepts connections (blocking).">bind_to_port</span>
+        fails fast if another process holds :8080 — prevents “fake started” messages.
+      </p>
+
+      <h2>4. Stop: cooperative shutdown</h2>
+      <pre><code>void FileController::stop() {
+    if (!running_.exchange(false)) { join; return; }
+    server_.stop();      // unblocks listen loop
+    serverThread_.join();
+}</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:150-163</span>
+      <p>
+        <code>server_.stop()</code> closes the listening socket so <code>listen_after_bind()</code> returns.
+        <span class="tip" data-tip="join() blocks until serverThread_ finishes — required before destroying FileController.">join()</span> prevents use-after-free.
+      </p>
+
+      <h2>5. httplib thread pool</h2>
+      <p>
+        Each accepted HTTP connection is handled on the library’s internal
+        <code>ThreadPool</code> (default worker count ≈ hardware concurrency). Your handler code runs on a pool thread,
+        <strong>not</strong> on <code>serverThread_</code>.
+      </p>
+      <div class="callout">
+        <strong>Implication:</strong> <code>handleUpload</code> and <code>handleDownload</code> may run concurrently on different pool threads.
+        Shared state is <code>fileSharer_</code> map — no mutex today; single-writer per port in practice.
+      </div>
+
+      <h2>6. Multipart upload parsing</h2>
+      <pre><code>if (!req.form.has_file("file")) { return 400; }
+const httplib::FormData uploaded = req.form.get_file("file");
+fos.write(uploaded.content.data(), uploaded.content.size());</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:274-301</span>
+      <p>httplib populates <code>req.form</code> during body read, before your handler runs.</p>
+    </main>
+  </div>
+  <script src="assets/js/manual.js"></script>
+</body>
+</html>

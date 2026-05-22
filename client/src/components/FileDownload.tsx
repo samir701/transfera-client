@@ -11,24 +11,25 @@ interface FileDownloadProps {
 export default function FileDownload({ onDownload, isDownloading }: FileDownloadProps) {
   const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState('');
-  
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    
+
     const port = parseInt(inviteCode.trim(), 10);
     if (isNaN(port) || port <= 0 || port > 65535) {
       setError('Please enter a valid port number (1-65535)');
       return;
     }
-    
+
     try {
       await onDownload(port);
     } catch (err) {
+      console.error(err);
       setError('Failed to download the file. Please check the invite code and try again.');
     }
   };
-  
+
   return (
     <div className="space-y-4">
       <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
@@ -37,7 +38,7 @@ export default function FileDownload({ onDownload, isDownloading }: FileDownload
           Enter the invite code shared with you to download the file.
         </p>
       </div>
-      
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="inviteCode" className="block text-sm font-medium text-gray-700 mb-1">
@@ -55,7 +56,7 @@ export default function FileDownload({ onDownload, isDownloading }: FileDownload
           />
           {error && <p className="mt-1 text-sm text-red-600">{error}</p>}
         </div>
-        
+
         <button
           type="submit"
           className="btn-primary flex items-center justify-center w-full"

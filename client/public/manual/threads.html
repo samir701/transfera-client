@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Threads & Concurrency — PeerLink Manual</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/manual.css" />
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="brand">PeerLink Manual</div>
+      <div class="deploy-links">
+        <a id="deploy-app-link" href="#">Live app</a>
+        <a id="deploy-manual-link" href="#">This manual</a>
+      </div>
+      <ul id="manual-nav-list"></ul>
+    </nav>
+    <main class="content">
+      <h1>Threads &amp; concurrency</h1>
+      <p class="lead">PeerLink uses <span class="tip" data-tip="std::thread launches an OS thread running a callable. C++20 thread support.">std::thread</span>,
+      <span class="tip" data-tip="detach(): thread of execution is not joinable; resources reclaimed at thread exit.">detach</span>,
+      <span class="tip" data-tip="join(): blocks until thread completes; required for joinable threads before destruction.">join</span>, and
+      <span class="tip" data-tip="std::atomic: lock-free or locked loads/stores for flags shared across threads.">std::atomic</span>.</p>
+
+      <h2>1. Thread inventory</h2>
+      <table>
+        <thead><tr><th>Thread</th><th>Created at</th><th>Ends when</th><th>Joined?</th></tr></thead>
+        <tbody>
+          <tr><td><code>main</code></td><td>OS</td><td><code>return 0</code></td><td>N/A</td></tr>
+          <tr><td><code>serverThread_</code></td><td><code>FileController::start</code></td><td><code>listen</code> returns</td><td>Yes, in <code>stop()</code></td></tr>
+          <tr><td>httplib pool workers</td><td>First accept</td><td>Process exit</td><td>httplib <code>shutdown()</code></td></tr>
+          <tr><td>Upload P2P thread</td><td><code>handleUpload</code></td><td><code>startFileServer</code> returns</td><td><strong>No — detached</strong></td></tr>
+          <tr><td><code>sender</code> in FileSharer</td><td>after <code>accept</code></td><td><code>fileSenderHandler</code> done</td><td>Yes, <code>sender.join()</code></td></tr>
+        </tbody>
+      </table>
+
+      <h2>2. Detached upload thread (critical)</h2>
+      <pre><code>std::thread([this, port]() {
+    fileSharer_.startFileServer(port);
+}).detach();</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:308-310</span>
+      <h3>Why detach?</h3>
+      <ul>
+        <li><code>handleUpload</code> must return HTTP 200 immediately with <code>{"port": N}</code>.</li>
+        <li><code>startFileServer</code> blocks on <code>accept()</code> — may wait seconds for downloader.</li>
+        <li>Joining in the handler would stall the httplib worker thread for the whole wait.</li>
+      </ul>
+      <h3>Risks</h3>
+      <ul>
+        <li><strong>No exception propagation</strong> to upload handler.</li>
+        <li><strong>Lifetime:</strong> captures <code>this</code> → <code>FileController</code> must outlive the thread (true until process exit).</li>
+        <li><strong>Many uploads</strong> → many concurrent detached threads + TCP listeners.</li>
+      </ul>
+
+      <h2>3. Atomics: running_ and listen_ok_</h2>
+      <pre><code>if (running_.exchange(true)) return listen_ok_.load();
+listen_ok_ = true;  // set inside serverThread_ after bind</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:104-121</span>
+      <p>
+        <span class="tip" data-tip="exchange(true): atomically sets to true and returns previous value. If already true, start() was called twice.">exchange</span>
+        prevents double-start races between main and destructor paths.
+      </p>
+
+      <h2>4. Zombie threads vs zombie processes</h2>
+      <div class="callout">
+        <strong>Zombie process (Unix):</strong> Child exited but parent didn't <code>wait()</code> — shows as <code>Z</code> in <code>ps</code>.
+        <strong>This project:</strong> no child processes for serving.
+      </div>
+      <div class="callout warn">
+        <strong>“Zombie” colloquially:</strong> Detached threads still running after you think shutdown completed.
+        If uploads keep spawning P2P servers, ports stay open until each thread finishes.
+        Killing the process with <code>kill -9</code> terminates all threads immediately.
+      </div>
+
+      <h2>5. thread_local RNG</h2>
+      <pre><code>thread_local std::mt19937 rng{std::random_device{}()};</code></pre>
+      <span class="cite">server/src/services/fileController.cpp:36</span>
+      <span class="cite">server/src/utils/uploadUtils.cpp:14</span>
+      <p>Each thread gets its own PRNG — safe without mutex; used for filenames and port generation.</p>
+    </main>
+  </div>
+  <script src="assets/js/manual.js"></script>
+</body>
+</html>

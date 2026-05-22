@@ -172,8 +172,27 @@ export default function Home() {
         )}
       </div>
       
-      <footer className="mt-12 text-center text-gray-500 text-sm">
+      <footer className="mt-12 text-center text-gray-500 text-sm space-y-1">
         <p>PeerLink &copy; {new Date().getFullYear()} - Secure P2P File Sharing</p>
+        <p>
+          <a
+            href="manual/index.html"
+            className="text-blue-600 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Technical manual (architecture &amp; internals)
+          </a>
+          {' · '}
+          <a
+            href="https://dasanik2001.github.io/p2p_file_sharer_in_cpp/manual/"
+            className="text-blue-600 hover:underline"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Manual on GitHub Pages
+          </a>
+        </p>
       </footer>
     </div>
   );

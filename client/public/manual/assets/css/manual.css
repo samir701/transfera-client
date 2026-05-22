@@ -1,0 +1,198 @@
+:root {
+  --bg: #0b1020;
+  --surface: #141b2d;
+  --surface2: #1c2640;
+  --text: #e8ecf4;
+  --muted: #9aa8c7;
+  --accent: #4f8cff;
+  --accent2: #22c55e;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --code-bg: #0d1324;
+  --border: #2a3658;
+  --tooltip-bg: #1e293b;
+  --nav-width: 280px;
+  --font: "IBM Plex Sans", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", "SF Mono", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.65;
+  font-size: 16px;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.layout {
+  display: grid;
+  grid-template-columns: var(--nav-width) 1fr;
+  min-height: 100vh;
+}
+
+nav.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 1.25rem 1rem;
+}
+
+nav.sidebar .brand {
+  font-weight: 700;
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+  color: var(--text);
+}
+
+nav.sidebar .deploy-links {
+  font-size: 0.8rem;
+  margin-bottom: 1.25rem;
+  padding: 0.75rem;
+  background: var(--surface2);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+nav.sidebar .deploy-links a { display: block; margin: 0.25rem 0; word-break: break-all; }
+
+nav.sidebar ul { list-style: none; padding: 0; margin: 0; }
+nav.sidebar li { margin: 0.15rem 0; }
+nav.sidebar li a {
+  display: block;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+nav.sidebar li a:hover,
+nav.sidebar li a.active {
+  background: var(--surface2);
+  color: var(--text);
+  text-decoration: none;
+}
+
+main.content {
+  padding: 2rem 2.5rem 4rem;
+  max-width: 920px;
+}
+
+h1 { font-size: 2rem; margin-top: 0; line-height: 1.2; }
+h2 { font-size: 1.45rem; margin-top: 2.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.35rem; }
+h3 { font-size: 1.15rem; margin-top: 1.75rem; color: #c5d4f5; }
+
+.lead { font-size: 1.1rem; color: var(--muted); }
+
+.callout {
+  border-left: 4px solid var(--accent);
+  background: var(--surface2);
+  padding: 1rem 1.25rem;
+  margin: 1.25rem 0;
+  border-radius: 0 8px 8px 0;
+}
+
+.callout.warn { border-left-color: var(--warn); }
+.callout.danger { border-left-color: var(--danger); }
+.callout.ok { border-left-color: var(--accent2); }
+
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--code-bg);
+  padding: 0.12em 0.35em;
+  border-radius: 4px;
+}
+
+pre code { background: none; padding: 0; }
+
+.cite {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin-top: 0.35rem;
+  font-family: var(--mono);
+}
+
+.diagram {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  padding: 1rem;
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  white-space: pre;
+  overflow-x: auto;
+  line-height: 1.35;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.92rem;
+}
+th, td {
+  border: 1px solid var(--border);
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+}
+th { background: var(--surface2); }
+
+/* Syntax tooltip spans */
+.tip {
+  border-bottom: 1px dotted var(--accent);
+  cursor: help;
+  position: relative;
+}
+
+.tip::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  min-width: 220px;
+  max-width: 360px;
+  padding: 0.65rem 0.85rem;
+  background: var(--tooltip-bg);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-family: var(--font);
+  line-height: 1.45;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  z-index: 100;
+  font-weight: normal;
+}
+
+.tip:hover::after,
+.tip:focus::after {
+  opacity: 1;
+}
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav.sidebar { position: relative; height: auto; }
+}

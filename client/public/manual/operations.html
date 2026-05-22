@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Operations — PeerLink Manual</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/manual.css" />
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="brand">PeerLink Manual</div>
+      <div class="deploy-links">
+        <a id="deploy-app-link" href="#">Live app</a>
+        <a id="deploy-manual-link" href="#">This manual</a>
+      </div>
+      <ul id="manual-nav-list"></ul>
+    </nav>
+    <main class="content">
+      <h1>Operations &amp; troubleshooting</h1>
+
+      <h2>1. Start / stop server</h2>
+      <pre><code>cd server
+./scripts/run.sh          # recommended: frees port 8080 first
+# or: ./build/server
+
+# stop: Ctrl+C in terminal (SIGINT → g_keepRunning=false → controller.stop())
+
+# force kill stale processes:
+lsof -ti :8080 | xargs kill -9</code></pre>
+      <span class="cite">server/scripts/run.sh</span>
+      <span class="cite">server/src/main_runner.cpp:53-56</span>
+
+      <h2>2. Where the server is spawned</h2>
+      <p>Not spawned as a child by Next.js. You run <code>./build/server</code> as its own process. The browser only makes HTTP requests to it.</p>
+
+      <h2>3. How the server is killed</h2>
+      <table>
+        <thead><tr><th>Mechanism</th><th>What happens</th></tr></thead>
+        <tbody>
+          <tr><td>Ctrl+C (SIGINT)</td><td><code>onSignal</code> → loop exits → <code>controller.stop()</code></td></tr>
+          <tr><td><code>kill &lt;pid&gt;</code> (SIGTERM)</td><td>Same as SIGINT path if handler runs</td></tr>
+          <tr><td><code>kill -9</code></td><td>Immediate termination; no graceful stop; OS closes all FDs</td></tr>
+          <tr><td>Destructor</td><td><code>~FileController()</code> calls <code>stop()</code></td></tr>
+        </tbody>
+      </table>
+
+      <h2>4. Multiple servers on port 8080</h2>
+      <div class="callout danger">
+        Symptom: uploads hang, health times out, UI says API offline.<br/>
+        Cause: several <code>server</code> processes bound or half-dead on :8080.<br/>
+        Fix: <code>lsof -ti :8080 | xargs kill -9</code> then single <code>./scripts/run.sh</code>.
+      </div>
+
+      <h2>5. GitHub Pages deployment</h2>
+      <p>Workflow: <code>.github/workflows/client_deploy.yml</code> builds <code>client/</code> and deploys <code>client/out</code>.</p>
+      <table>
+        <thead><tr><th>Asset</th><th>URL</th></tr></thead>
+        <tbody>
+          <tr><td>Next.js app</td><td><a href="https://dasanik2001.github.io/p2p_file_sharer_in_cpp/">https://dasanik2001.github.io/p2p_file_sharer_in_cpp/</a></td></tr>
+          <tr><td>This manual</td><td><a href="https://dasanik2001.github.io/p2p_file_sharer_in_cpp/manual/">https://dasanik2001.github.io/p2p_file_sharer_in_cpp/manual/</a></td></tr>
+        </tbody>
+      </table>
+      <p>Manual files live in <code>client/public/manual/</code> and copy to <code>out/manual/</code> on <code>npm run build</code>.</p>
+      <p><strong>Note:</strong> GitHub Pages hosts static files only — the C++ API must run on a machine you control (<code>127.0.0.1:8080</code> for local dev).</p>
+
+      <h2>6. Deploy manual updates</h2>
+      <pre><code>git add client/public/manual
+git commit -m "docs: update PeerLink manual"
+git push origin main
+# Wait for "Client Deploy" GitHub Action to finish</code></pre>
+
+      <h2>7. Health checklist</h2>
+      <ol>
+        <li><code>curl http://127.0.0.1:8080/api/health</code> → <code>{"status":"ok"}</code></li>
+        <li>UI shows green “API connected”</li>
+        <li>Upload returns JSON with numeric <code>port</code></li>
+        <li>Download with that port saves file with correct extension</li>
+      </ol>
+    </main>
+  </div>
+  <script src="assets/js/manual.js"></script>
+</body>
+</html>
