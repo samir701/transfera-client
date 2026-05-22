@@ -2,12 +2,12 @@
 
 | Service | Port | URL |
 |---------|------|-----|
-| **UI** (static Next export via `serve`) | **3000** | `http://YOUR_IP:3000/` |
+| **UI** (`serve` → `client/out`) | **80** (default) | `http://YOUR_IP/` |
 | **C++ API** | **8080** | `http://YOUR_IP:8080/api/health` |
 
-The UI is built with `NEXT_PUBLIC_API_BASE_URL=http://YOUR_IP:8080` so the browser calls the API on **8080**.
+Set `CLIENT_PORT=80` in `/etc/peerlink/env` so `curl http://YOUR_IP/` works. Use `CLIENT_PORT=3000` if you prefer `http://YOUR_IP:3000/`.
 
-Optional: map **port 80 → 3000** so `http://YOUR_IP/` opens the UI without `:3000`.
+The UI is built with `NEXT_PUBLIC_API_BASE_URL=http://YOUR_IP:8080` so the browser calls the API on **8080**.
 
 ## Setup
 
@@ -54,36 +54,40 @@ systemctl start peerlink-api peerlink-client
 systemctl status peerlink-api peerlink-client
 ```
 
-### Firewall
+### Firewall (required — otherwise curl hangs from your Mac)
 
 ```bash
 ufw allow OpenSSH
-ufw allow 3000/tcp
-ufw allow 8080/tcp
 ufw allow 80/tcp
+ufw allow 8080/tcp
 ufw enable
+ufw status
 ```
 
-Linode Cloud Firewall: **22, 80, 3000, 8080**.
+**Linode dashboard → Networking → Firewall:** add inbound **TCP 22, 80, 8080** to this instance (if a Cloud Firewall is attached).
 
-### Map port 80 → UI (optional)
+### Diagnose on the server
 
 ```bash
-./deploy/linode/map-port-80.sh
+./deploy/linode/diagnose.sh
 ```
-
-Then open **`http://YOUR_IP/`** (port 80) or **`http://YOUR_IP:3000/`**.
 
 ## Verify
 
 ```bash
+./deploy/linode/diagnose.sh
 curl http://127.0.0.1:8080/api/health
-curl -I http://127.0.0.1:3000/
+curl -I http://127.0.0.1:80/
 ```
 
-From your laptop:
+From your Mac:
 
-- UI: `http://YOUR_IP:3000/` or `http://YOUR_IP/` after port map
+```bash
+curl -s --connect-timeout 5 http://YOUR_IP:8080/api/health
+curl -sI --connect-timeout 5 http://YOUR_IP/
+```
+
+- UI: `http://YOUR_IP/` (with `CLIENT_PORT=80`)
 - API: `http://YOUR_IP:8080/api/health`
 
 ## Updates

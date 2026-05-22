@@ -16,8 +16,9 @@ chmod +x "$DIR/run-client.sh" "$DIR/map-port-80.sh"
 
 systemctl daemon-reload
 systemctl enable peerlink-api peerlink-client
-echo "Enabled peerlink-api (8080) and peerlink-client (3000)."
-echo "  1. Edit $ENV_FILE"
+echo "Enabled peerlink-api (:8080) and peerlink-client (CLIENT_PORT from env, default 80)."
+echo "  1. Edit $ENV_FILE (set LINODE_IP, CLIENT_PORT=80 for http://IP/)"
 echo "  2. ./deploy/linode/build-ui.sh YOUR_IP"
-echo "  3. systemctl start peerlink-api peerlink-client"
-echo "  4. Optional: ./deploy/linode/map-port-80.sh  then open http://YOUR_IP/"
+echo "  3. ufw allow 80/tcp && ufw allow 8080/tcp"
+echo "  4. systemctl start peerlink-api peerlink-client"
+echo "  5. ./deploy/linode/diagnose.sh"
