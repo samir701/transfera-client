@@ -4,12 +4,40 @@
 // Future Work - make a CLI using which files can be transferred 
 
 
-To Compile any change in server
+## Server (C++ API)
 
-- cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-- cmake --build build -j
-- ./build/server  
+Build and run:
 
+```bash
+cd server
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
+./build/server
+```
 
-Use netcat to send a request to the server
-- nc 127.0.0.1 <PORT>
+Default port is **8080** (override with `PORT=9000 ./build/server`).
+
+API endpoints (used by the Next.js client):
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/health` | Health check |
+| POST | `/api/upload` | Multipart field `file` → `{ "port": <invite-code> }` |
+| GET | `/api/download/:port` | Download file for invite code |
+
+CORS is enabled for browser requests from the frontend.
+
+## Client (Next.js)
+
+```bash
+cd client
+cp .env.local.example .env.local   # optional; defaults to http://localhost:8080
+npm install
+npm run dev
+```
+
+1. Start the C++ server (`./build/server`).
+2. Start the client (`npm run dev` → usually http://localhost:3000).
+3. Upload a file, share the invite code, download on another tab/machine (same host for P2P peer socket).
+
+`NEXT_PUBLIC_API_BASE_URL` must point at the C++ server (required for static export / production hosting).

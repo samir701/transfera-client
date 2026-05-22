@@ -1,46 +1,54 @@
-#include "server/service/fileSharer.hpp"
+#include "server/service/fileController.hpp"
 
-#include <atomic>
 #include <chrono>
+#include <csignal>
 #include <cstdlib>
-#include <filesystem>
-#include <fstream>
+#include <atomic>
 #include <iostream>
 #include <thread>
 
+namespace
+{
+    std::atomic<bool> g_keepRunning{true};
+
+    void onSignal(int)
+    {
+        g_keepRunning = false;
+    }
+
+    int readPortFromEnv()
+    {
+        constexpr int kDefaultPort = 8080;
+        if (const char *env = std::getenv("PORT"); env && *env)
+        {
+            try
+            {
+                const int port = std::stoi(env);
+                if (port > 0 && port <= 65535)
+                    return port;
+            }
+            catch (...)
+            {
+            }
+            std::cerr << "Invalid PORT env, using default " << kDefaultPort << '\n';
+        }
+        return kDefaultPort;
+    }
+} // namespace
+
 int main()
 {
-    namespace fs = std::filesystem;
+    const int port = readPortFromEnv();
 
-    const fs::path tmp = fs::temp_directory_path() / "p2p_test_file.txt";
-    {
-        std::cout << tmp.string() << '\n';
-        std::ofstream out(tmp);
-        out << "hello from file sharer\n";
-    }
+    std::signal(SIGINT, onSignal);
+    std::signal(SIGTERM, onSignal);
 
-    server::service::FileSharer sharer;
-    const int port = sharer.offerFile(tmp.string());
+    server::services::FileController controller(port);
+    controller.start();
 
-    std::atomic<bool> ready{false};
-    std::thread server_thread([&]
-                              {
-    ready = true;
-    sharer.startFileServer(port); });
+    while (g_keepRunning)
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-    while (!ready)
-    {
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    std::cout << "Starting client to receive file...\n";
-    // const std::string cmd =
-    //     "nc 127.0.0.1 " + std::to_string(port) + " > /tmp/p2p_received.bin";
-    // if (std::system(cmd.c_str()) != 0)
-    // {
-    //     std::cerr << "nc failed (install netcat: brew install netcat)\n";
-    // }
-
-    server_thread.join();
+    controller.stop();
     return 0;
 }

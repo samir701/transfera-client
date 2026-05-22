@@ -241,12 +241,15 @@ namespace server::services
 
         serverThread_ = std::thread([this]
                                     {
-                                        std::cout << "API server started on port " << port_ << '\n';
                                         if (!server_.listen("0.0.0.0", port_))
                                         {
                                             std::cerr << "Failed to start API server on port " << port_ << '\n';
                                         }
                                         running_ = false; });
+
+        std::cout << "PeerLink API listening on http://0.0.0.0:" << port_ << '\n';
+        std::cout << "  POST http://localhost:" << port_ << "/api/upload\n";
+        std::cout << "  GET  http://localhost:" << port_ << "/api/download/<port>\n";
     }
 
     void FileController::stop()
@@ -269,6 +272,22 @@ namespace server::services
         server_.Options(R"(/.*)", [this](const httplib::Request &req, httplib::Response &res)
                         { handleCorsOrNotFound(req, res); });
 
+        // Health check for frontend / ops
+        server_.Get("/api/health", [this](const httplib::Request &, httplib::Response &res)
+                      {
+                          applyCorsHeaders(res);
+                          res.status = 200;
+                          res.set_content(R"({"status":"ok"})", "application/json");
+                      });
+
+        // Routes match Next.js client: /api/upload, /api/download/:port
+        server_.Post("/api/upload", [this](const httplib::Request &req, httplib::Response &res)
+                     { handleUpload(req, res); });
+
+        server_.Get(R"(/api/download/(\d+))", [this](const httplib::Request &req, httplib::Response &res)
+                    { handleDownload(req, res); });
+
+        // Legacy paths (Java-style)
         server_.Post("/upload", [this](const httplib::Request &req, httplib::Response &res)
                      { handleUpload(req, res); });
 
@@ -287,7 +306,9 @@ namespace server::services
     {
         res.set_header("Access-Control-Allow-Origin", "*");
         res.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        res.set_header("Access-Control-Allow-Headers", "Content-Type,Authorization");
+        res.set_header("Access-Control-Allow-Headers",
+                       "Content-Type, Authorization, Accept, X-Requested-With");
+        res.set_header("Access-Control-Max-Age", "86400");
     }
 
     void FileController::handleCorsOrNotFound(const httplib::Request &req,
@@ -333,25 +354,40 @@ namespace server::services
 
         try
         {
-            const std::string boundary = extractBoundary(contentType);
-            if (boundary.empty())
+            std::string filename;
+            std::string fileBytes;
+
+            // Prefer httplib multipart parsing (reliable for browser uploads)
+            if (req.form.has_file("file"))
             {
-                res.status = 400;
-                res.set_content("Bad Request: missing multipart boundary", "text/plain");
-                return;
+                const httplib::FormData uploaded = req.form.get_file("file");
+                filename = uploaded.filename;
+                fileBytes = uploaded.content;
+            }
+            else
+            {
+                const std::string boundary = extractBoundary(contentType);
+                if (boundary.empty())
+                {
+                    res.status = 400;
+                    res.set_content("Bad Request: missing multipart boundary", "text/plain");
+                    return;
+                }
+
+                MultipartParser parser(req.body, boundary);
+                const std::optional<ParseResult> result = parser.parse();
+
+                if (!result)
+                {
+                    res.status = 400;
+                    res.set_content("Bad Request: Could not parse file content", "text/plain");
+                    return;
+                }
+
+                filename = result->filename;
+                fileBytes = result->fileContent;
             }
 
-            MultipartParser parser(req.body, boundary);
-            const std::optional<ParseResult> result = parser.parse();
-
-            if (!result)
-            {
-                res.status = 400;
-                res.set_content("Bad Request: Could not parse file content", "text/plain");
-                return;
-            }
-
-            std::string filename = result->filename;
             if (filename.empty())
                 filename = "unnamed-file";
 
@@ -360,8 +396,8 @@ namespace server::services
 
             {
                 std::ofstream fos(filePath, std::ios::binary);
-                fos.write(result->fileContent.data(),
-                          static_cast<std::streamsize>(result->fileContent.size()));
+                fos.write(fileBytes.data(),
+                          static_cast<std::streamsize>(fileBytes.size()));
                 if (!fos)
                     throw std::runtime_error("failed to write uploaded file");
             }
@@ -446,6 +482,8 @@ namespace server::services
                 ::close(sock);
                 throw std::runtime_error("failed to read filename header");
             }
+            if (!header.empty() && header.back() == '\r')
+                header.pop_back();
 
             std::string filename = "downloaded-file";
             const std::string prefix = "Filename: ";

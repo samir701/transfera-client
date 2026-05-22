@@ -5,6 +5,7 @@ import FileUpload from '@/components/FileUpload';
 import FileDownload from '@/components/FileDownload';
 import InviteCode from '@/components/InviteCode';
 import axios from 'axios';
+import { apiUrl } from '@/lib/api';
 
 export default function Home() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -21,7 +22,7 @@ export default function Home() {
       const formData = new FormData();
       formData.append('file', file);
       
-      const response = await axios.post('/api/upload', formData, {
+      const response = await axios.post(apiUrl('/api/upload'), formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -40,8 +41,7 @@ export default function Home() {
     setIsDownloading(true);
     
     try {
-      // Request download from Java backend
-      const response = await axios.get(`/api/download/${port}`, {
+      const response = await axios.get(apiUrl(`/api/download/${port}`), {
         responseType: 'blob',
       });
       
