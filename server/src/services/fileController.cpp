@@ -90,15 +90,7 @@ namespace server::services
         std::error_code ec;
         fs::create_directories(uploadDir_, ec);
 
-        if (const char *web = std::getenv("PEERLINK_WEB_ROOT"); web && *web)
-        {
-            webRoot_ = fs::path(web);
-            if (!fs::exists(webRoot_) || !fs::is_directory(webRoot_))
-            {
-                std::cerr << "WARNING: PEERLINK_WEB_ROOT is not a directory: " << webRoot_ << '\n';
-                webRoot_.clear();
-            }
-        }
+        resolveWebRoot();
 
         // Use httplib default thread pool (avoids custom pool edge cases under load)
         server_.set_read_timeout(120, 0);
@@ -173,10 +165,150 @@ namespace server::services
         std::cout << "API server stopped\n";
     }
 
+    void FileController::resolveWebRoot()
+    {
+        auto tryDir = [](const fs::path &dir) -> bool
+        {
+            return fs::exists(dir / "index.html");
+        };
+
+        if (const char *web = std::getenv("PEERLINK_WEB_ROOT"); web && *web)
+            webRoot_ = fs::path(web);
+
+        if (!webRoot_.empty() && !tryDir(webRoot_))
+        {
+            std::cerr << "WARNING: PEERLINK_WEB_ROOT has no index.html: " << webRoot_ << '\n';
+            webRoot_.clear();
+        }
+
+        if (webRoot_.empty() && tryDir("/var/www/peerlink"))
+            webRoot_ = "/var/www/peerlink";
+
+        if (webRoot_.empty())
+        {
+            const fs::path relOut = fs::path("client") / "out";
+            if (tryDir(relOut))
+                webRoot_ = fs::absolute(relOut);
+        }
+
+        if (webRoot_.empty())
+        {
+            std::cerr << "WARNING: No UI files found. Run on Linode:\n"
+                      << "  ./deploy/linode/build-ui.sh http://YOUR_IP:8080\n"
+                      << "  export PEERLINK_WEB_ROOT=/var/www/peerlink\n";
+        }
+        else
+        {
+            std::cout << "Web root: " << fs::absolute(webRoot_) << '\n';
+        }
+    }
+
+    const char *FileController::mimeForPath(const std::string &path)
+    {
+        const auto dot = path.find_last_of('.');
+        if (dot == std::string::npos)
+            return "application/octet-stream";
+        const std::string ext = path.substr(dot);
+        if (ext == ".html")
+            return "text/html";
+        if (ext == ".css")
+            return "text/css";
+        if (ext == ".js")
+            return "application/javascript";
+        if (ext == ".json")
+            return "application/json";
+        if (ext == ".png")
+            return "image/png";
+        if (ext == ".jpg" || ext == ".jpeg")
+            return "image/jpeg";
+        if (ext == ".svg")
+            return "image/svg+xml";
+        if (ext == ".woff2")
+            return "font/woff2";
+        if (ext == ".ico")
+            return "image/x-icon";
+        return "application/octet-stream";
+    }
+
+    bool FileController::serveStaticFile(const std::string &relPath,
+                                         httplib::Response &res) const
+    {
+        if (webRoot_.empty())
+        {
+            res.status = 404;
+            res.set_content(
+                "UI not installed. On Linode run:\n"
+                "  ./deploy/linode/build-ui.sh http://YOUR_IP:8080\n"
+                "  systemctl restart peerlink-api\n",
+                "text/plain");
+            return false;
+        }
+
+        fs::path file = webRoot_ / relPath;
+        std::error_code ec;
+        file = fs::weakly_canonical(file, ec);
+        if (ec)
+        {
+            res.status = 404;
+            res.set_content("Not Found", "text/plain");
+            return false;
+        }
+
+        const auto root = fs::weakly_canonical(webRoot_, ec);
+        const std::string rootStr = root.string();
+        const std::string fileStr = file.string();
+        if (fileStr.size() < rootStr.size() ||
+            fileStr.compare(0, rootStr.size(), rootStr) != 0)
+        {
+            res.status = 403;
+            res.set_content("Forbidden", "text/plain");
+            return false;
+        }
+
+        if (!fs::exists(file) || !fs::is_regular_file(file))
+        {
+            res.status = 404;
+            res.set_content("Not Found", "text/plain");
+            return false;
+        }
+
+        std::ifstream in(file, std::ios::binary);
+        if (!in)
+        {
+            res.status = 500;
+            res.set_content("Error reading file", "text/plain");
+            return false;
+        }
+
+        std::ostringstream buf;
+        buf << in.rdbuf();
+        applyCorsHeaders(res);
+        res.status = 200;
+        res.set_content(buf.str(), mimeForPath(file.string()));
+        return true;
+    }
+
+    void FileController::mountWebRoot()
+    {
+        if (webRoot_.empty())
+            return;
+
+        if (server_.set_mount_point("/", webRoot_.string()))
+            std::cout << "Static files mounted at /\n";
+        else
+            std::cerr << "WARNING: httplib could not mount " << webRoot_ << '\n';
+    }
+
     void FileController::registerRoutes()
     {
         server_.Options(R"(/.*)", [this](const httplib::Request &req, httplib::Response &res)
                         { handleCorsOrNotFound(req, res); });
+
+        server_.Get("/", [this](const httplib::Request &, httplib::Response &res)
+                    { serveStaticFile("index.html", res); });
+
+        server_.Get("/index.html", [this](const httplib::Request &, httplib::Response &res)
+                    { serveStaticFile("index.html", res); });
 
         // Health check for frontend / ops
         server_.Get("/api/health", [this](const httplib::Request &, httplib::Response &res)
@@ -199,16 +331,17 @@ namespace server::services
         server_.Get(R"(/download/(\d+))", [this](const httplib::Request &req, httplib::Response &res)
                     { handleDownload(req, res); });
 
-        if (!webRoot_.empty())
-        {
-            if (server_.set_mount_point("/", webRoot_.string()))
-                std::cout << "Static UI: " << webRoot_ << " (http://0.0.0.0:" << port_ << "/)\n";
-            else
-                std::cerr << "WARNING: could not mount PEERLINK_WEB_ROOT at /\n";
-        }
+        mountWebRoot();
 
         server_.set_error_handler([this](const httplib::Request &req, httplib::Response &res)
                                   {
+                                      if (res.status == 404 &&
+                                          req.path.rfind("/api/", 0) != 0 &&
+                                          req.path.rfind("/api", 0) != 0)
+                                      {
+                                          if (serveStaticFile("index.html", res))
+                                              return;
+                                      }
                                       if (res.status == 404)
                                           handleCorsOrNotFound(req, res);
                                       else

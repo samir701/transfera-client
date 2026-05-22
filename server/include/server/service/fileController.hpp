@@ -40,6 +40,11 @@ namespace server::services
         // Java: path.substring(lastIndexOf('/') + 1) + Integer.parseInt
         static bool parsePortFromPath(const std::string &path, int &outPort);
 
+        void resolveWebRoot();
+        void mountWebRoot();
+        bool serveStaticFile(const std::string &relPath, httplib::Response &res) const;
+        static const char *mimeForPath(const std::string &path);
+
         service::FileSharer fileSharer_;
         httplib::Server server_;
         std::filesystem::path uploadDir_;

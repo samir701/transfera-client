@@ -58,19 +58,22 @@ Linode Cloud Firewall: inbound **22**, **8080**.
 
 ## 7. Verify
 
-On the server:
-
 ```bash
+./deploy/linode/verify-ui.sh
 curl http://127.0.0.1:8080/api/health
+curl -I http://127.0.0.1:8080/
 ```
 
-From your laptop:
+`curl -I /` should return **200** and `Content-Type: text/html`. If you see plain `Not Found`, the UI was not built or the server binary is outdated.
 
-```bash
-curl http://YOUR_IP:8080/api/health
-```
+From your laptop: **`http://YOUR_IP:8080/`**
 
-Browser: **`http://YOUR_IP:8080/`**
+### "Not Found" in the browser
+
+1. Build UI: `./deploy/linode/build-ui.sh http://YOUR_IP:8080`
+2. Rebuild server after `git pull`: `JOBS=1 ./deploy/linode/build-server.sh`
+3. Restart: `systemctl restart peerlink-api`
+4. Check logs: `journalctl -u peerlink-api -n 20` — should show `Web root: /var/www/peerlink`
 
 ## 8. Updates
 
