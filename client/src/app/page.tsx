@@ -1,11 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import FileUpload from '@/components/FileUpload';
 import FileDownload from '@/components/FileDownload';
 import InviteCode from '@/components/InviteCode';
 import axios from 'axios';
-import { apiUrl } from '@/lib/api';
+import { apiUrl, API_BASE_URL } from '@/lib/api';
+import {
+  getResponseHeader,
+  resolveDownloadFilename,
+} from '@/lib/downloadFilename';
 
 export default function Home() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
@@ -13,6 +17,25 @@ export default function Home() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [port, setPort] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<'upload' | 'download'>('upload');
+  const [apiOnline, setApiOnline] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const check = async () => {
+      try {
+        await axios.get(apiUrl('/api/health'), { timeout: 3000 });
+        if (!cancelled) setApiOnline(true);
+      } catch {
+        if (!cancelled) setApiOnline(false);
+      }
+    };
+    check();
+    const id = setInterval(check, 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   const handleFileUpload = async (file: File) => {
     setUploadedFile(file);
@@ -22,16 +45,23 @@ export default function Home() {
       const formData = new FormData();
       formData.append('file', file);
       
-      const response = await axios.post(apiUrl('/api/upload'), formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-      
-      setPort(response.data.port);
+      // Do not set Content-Type manually — axios/browser must add the boundary parameter.
+      const response = await axios.post(apiUrl('/api/upload'), formData);
+
+      const invitePort = response.data?.port;
+      if (typeof invitePort !== 'number' || invitePort <= 0) {
+        throw new Error('Invalid response from server');
+      }
+      setPort(invitePort);
     } catch (error) {
       console.error('Error uploading file:', error);
-      alert('Failed to upload file. Please try again.');
+      const message =
+        axios.isAxiosError(error) && error.response?.data
+          ? typeof error.response.data === 'string'
+            ? error.response.data
+            : JSON.stringify(error.response.data)
+          : `Cannot reach API at ${API_BASE_URL}. Start the server: cd server && ./scripts/run.sh`;
+      alert(message);
     } finally {
       setIsUploading(false);
     }
@@ -44,33 +74,17 @@ export default function Home() {
       const response = await axios.get(apiUrl(`/api/download/${port}`), {
         responseType: 'blob',
       });
-      
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+
+      const filename = resolveDownloadFilename(response.headers);
+      const mimeType =
+        getResponseHeader(response.headers, 'content-type') ||
+        'application/octet-stream';
+
+      const url = window.URL.createObjectURL(
+        new Blob([response.data], { type: mimeType ?? undefined })
+      );
       const link = document.createElement('a');
       link.href = url;
-      
-      // Try to get filename from response headers
-      // Axios normalizes headers to lowercase, but we need to handle different cases
-      const headers = response.headers;
-      let contentDisposition = '';
-      
-      // Look for content-disposition header regardless of case
-      for (const key in headers) {
-        if (key.toLowerCase() === 'content-disposition') {
-          contentDisposition = headers[key];
-          break;
-        }
-      }
-      
-      let filename = 'downloaded-file';
-      
-      if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="(.+)"/);
-        if (filenameMatch && filenameMatch.length === 2) {
-          filename = filenameMatch[1];
-        }
-      }
-      
       link.setAttribute('download', filename);
       document.body.appendChild(link);
       link.click();
@@ -88,6 +102,15 @@ export default function Home() {
       <header className="text-center mb-12">
         <h1 className="text-4xl font-bold text-blue-600 mb-2">PeerLink</h1>
         <p className="text-xl text-gray-600">Secure P2P File Sharing</p>
+        {apiOnline === false && (
+          <p className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-4 py-2 inline-block">
+            API offline at {API_BASE_URL}. Run:{' '}
+            <code className="font-mono">cd server && ./scripts/run.sh</code>
+          </p>
+        )}
+        {apiOnline === true && (
+          <p className="mt-4 text-sm text-green-700">API connected ({API_BASE_URL})</p>
+        )}
       </header>
       
       <div className="bg-white rounded-lg shadow-lg p-6">

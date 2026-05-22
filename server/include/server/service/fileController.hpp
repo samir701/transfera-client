@@ -17,7 +17,8 @@ namespace server::services
         explicit FileController(int port);
         ~FileController();
 
-        void start();
+        // Returns false if the port could not be bound (e.g. another server instance).
+        bool start();
         void stop();
 
     private:
@@ -33,7 +34,7 @@ namespace server::services
         // Java: DownloadHandler
         void handleDownload(const httplib::Request &req, httplib::Response &res);
 
-        // Java: UUID + File.getName() for stored filename
+        static std::string sanitizeDisplayFilename(const std::string &originalFilename);
         static std::string makeUniqueName(const std::string &originalFilename);
 
         // Java: path.substring(lastIndexOf('/') + 1) + Integer.parseInt
@@ -46,6 +47,7 @@ namespace server::services
 
         std::thread serverThread_;
         std::atomic<bool> running_{false};
+        std::atomic<bool> listen_ok_{false};
     };
 
 } // namespace server::services

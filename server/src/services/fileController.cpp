@@ -1,13 +1,13 @@
 #include "server/service/fileController.hpp"
 
+#include <chrono>
 #include <cstdlib>
 #include <iostream>
 #include <fstream>
-#include <optional>
 #include <random>
+#include <thread>
 #include <sstream>
 #include <stdexcept>
-#include <vector>
 
 #include <arpa/inet.h>
 #include <cerrno>
@@ -81,140 +81,6 @@ namespace server::services
             return true;
         }
 
-        struct ParseResult
-        {
-            std::string filename;
-            std::string contentType;
-            std::string fileContent;
-        };
-
-        class MultipartParser
-        {
-        public:
-            MultipartParser(std::string data, std::string boundary)
-                : data_(std::move(data)), boundary_(std::move(boundary)) {}
-
-            std::optional<ParseResult> parse() const
-            {
-                try
-                {
-                    const std::string &dataAsString = data_;
-
-                    const std::string filenameMarker = "filename=\"";
-                    std::size_t filenameStart = dataAsString.find(filenameMarker);
-                    if (filenameStart == std::string::npos)
-                        return std::nullopt;
-
-                    filenameStart += filenameMarker.size();
-                    const std::size_t filenameEnd = dataAsString.find('"', filenameStart);
-                    if (filenameEnd == std::string::npos)
-                        return std::nullopt;
-
-                    const std::string filename =
-                        dataAsString.substr(filenameStart, filenameEnd - filenameStart);
-
-                    const std::string contentTypeMarker = "Content-Type: ";
-                    std::size_t contentTypeStart =
-                        dataAsString.find(contentTypeMarker, filenameEnd);
-                    std::string contentType = "application/octet-stream";
-
-                    if (contentTypeStart != std::string::npos)
-                    {
-                        contentTypeStart += contentTypeMarker.size();
-                        const std::size_t contentTypeEnd =
-                            dataAsString.find("\r\n", contentTypeStart);
-                        if (contentTypeEnd != std::string::npos)
-                        {
-                            contentType = dataAsString.substr(
-                                contentTypeStart, contentTypeEnd - contentTypeStart);
-                        }
-                    }
-
-                    const std::string headerEndMarker = "\r\n\r\n";
-                    const std::size_t headerEnd = dataAsString.find(headerEndMarker);
-                    if (headerEnd == std::string::npos)
-                        return std::nullopt;
-
-                    const std::size_t contentStart = headerEnd + headerEndMarker.size();
-
-                    std::string closing = "\r\n--" + boundary_ + "--";
-                    std::vector<unsigned char> boundaryBytes(closing.begin(), closing.end());
-                    std::size_t contentEnd =
-                        findSequence(data_, boundaryBytes, contentStart);
-
-                    if (contentEnd == std::string::npos)
-                    {
-                        closing = "\r\n--" + boundary_;
-                        boundaryBytes.assign(closing.begin(), closing.end());
-                        contentEnd = findSequence(data_, boundaryBytes, contentStart);
-                    }
-
-                    if (contentEnd == std::string::npos || contentEnd <= contentStart)
-                        return std::nullopt;
-
-                    return ParseResult{
-                        filename,
-                        contentType,
-                        data_.substr(contentStart, contentEnd - contentStart),
-                    };
-                }
-                catch (const std::exception &e)
-                {
-                    std::cerr << "Error parsing multipart data: " << e.what() << '\n';
-                    return std::nullopt;
-                }
-            }
-
-        private:
-            static std::size_t findSequence(const std::string &data,
-                                            const std::vector<unsigned char> &sequence,
-                                            std::size_t startPos)
-            {
-                if (sequence.empty() || startPos >= data.size())
-                    return std::string::npos;
-
-                for (std::size_t i = startPos; i + sequence.size() <= data.size(); ++i)
-                {
-                    bool match = true;
-                    for (std::size_t j = 0; j < sequence.size(); ++j)
-                    {
-                        if (static_cast<unsigned char>(data[i + j]) != sequence[j])
-                        {
-                            match = false;
-                            break;
-                        }
-                    }
-                    if (match)
-                        return i;
-                }
-                return std::string::npos;
-            }
-
-            std::string data_;
-            std::string boundary_;
-        };
-
-        std::string extractBoundary(const std::string &contentType)
-        {
-            const std::string key = "boundary=";
-            const auto pos = contentType.find(key);
-            if (pos == std::string::npos)
-                return {};
-
-            std::string boundary = contentType.substr(pos + key.size());
-
-            const auto semi = boundary.find(';');
-            if (semi != std::string::npos)
-                boundary = boundary.substr(0, semi);
-
-            while (!boundary.empty() && (boundary.front() == ' ' || boundary.front() == '"'))
-                boundary.erase(boundary.begin());
-            while (!boundary.empty() && (boundary.back() == ' ' || boundary.back() == '"'))
-                boundary.pop_back();
-
-            return boundary;
-        }
-
     } // namespace
 
     FileController::FileController(int port)
@@ -224,32 +90,60 @@ namespace server::services
         std::error_code ec;
         fs::create_directories(uploadDir_, ec);
 
-        // Equivalent to Executors.newFixedThreadPool(10)
-        server_.new_task_queue = []
-        { return new httplib::ThreadPool(10); };
+        // Use httplib default thread pool (avoids custom pool edge cases under load)
+        server_.set_read_timeout(120, 0);
+        server_.set_write_timeout(120, 0);
 
-        // Equivalent to createContext("/upload"...), "/download", "/"
         registerRoutes();
     }
 
     FileController::~FileController() { stop(); }
 
-    void FileController::start()
+    bool FileController::start()
     {
         if (running_.exchange(true))
-            return;
+            return listen_ok_.load();
+
+        listen_ok_ = false;
 
         serverThread_ = std::thread([this]
                                     {
-                                        if (!server_.listen("0.0.0.0", port_))
+                                        if (!server_.bind_to_port("0.0.0.0", port_))
                                         {
-                                            std::cerr << "Failed to start API server on port " << port_ << '\n';
+                                            std::cerr << "ERROR: Could not bind to port " << port_
+                                                      << " (is another server already running?)\n";
+                                            std::cerr << "  Fix: lsof -ti :" << port_
+                                                      << " | xargs kill -9\n";
+                                            running_ = false;
+                                            return;
                                         }
+
+                                        listen_ok_ = true;
+                                        if (!server_.listen_after_bind())
+                                        {
+                                            std::cerr << "ERROR: API server stopped on port "
+                                                      << port_ << '\n';
+                                        }
+                                        listen_ok_ = false;
                                         running_ = false; });
 
-        std::cout << "PeerLink API listening on http://0.0.0.0:" << port_ << '\n';
-        std::cout << "  POST http://localhost:" << port_ << "/api/upload\n";
-        std::cout << "  GET  http://localhost:" << port_ << "/api/download/<port>\n";
+        for (int i = 0; i < 50 && !listen_ok_.load(); ++i)
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+        if (!listen_ok_.load())
+        {
+            running_ = false;
+            server_.stop();
+            if (serverThread_.joinable())
+                serverThread_.join();
+            return false;
+        }
+
+        std::cout << "P2P_Sharer API listening on http://127.0.0.1:" << port_ << '\n';
+        std::cout << "  GET  http://127.0.0.1:" << port_ << "/api/health\n";
+        std::cout << "  POST http://127.0.0.1:" << port_ << "/api/upload\n";
+        std::cout << "  GET  http://127.0.0.1:" << port_ << "/api/download/<port>\n";
+        return true;
     }
 
     void FileController::stop()
@@ -274,11 +168,10 @@ namespace server::services
 
         // Health check for frontend / ops
         server_.Get("/api/health", [this](const httplib::Request &, httplib::Response &res)
-                      {
+                    {
                           applyCorsHeaders(res);
                           res.status = 200;
-                          res.set_content(R"({"status":"ok"})", "application/json");
-                      });
+                          res.set_content(R"({"status":"ok"})", "application/json"); });
 
         // Routes match Next.js client: /api/upload, /api/download/:port
         server_.Post("/api/upload", [this](const httplib::Request &req, httplib::Response &res)
@@ -309,6 +202,9 @@ namespace server::services
         res.set_header("Access-Control-Allow-Headers",
                        "Content-Type, Authorization, Accept, X-Requested-With");
         res.set_header("Access-Control-Max-Age", "86400");
+        // Required for axios/browser to read filename on cross-origin download (e.g. :3000 -> :8080)
+        res.set_header("Access-Control-Expose-Headers",
+                       "Content-Disposition, X-Filename, Content-Type, Content-Length");
     }
 
     void FileController::handleCorsOrNotFound(const httplib::Request &req,
@@ -326,10 +222,29 @@ namespace server::services
         res.set_content("Not Found", "text/plain");
     }
 
+    std::string FileController::sanitizeDisplayFilename(const std::string &originalFilename)
+    {
+        fs::path base = fs::path(originalFilename).filename();
+        std::string name = base.string();
+        if (name.empty() || name == "." || name == "..")
+            return "unnamed-file";
+
+        // Hidden files like ".env" — keep leading dot as stem
+        if (base.extension().empty() && !name.empty() && name.front() == '.')
+            return name;
+
+        return name;
+    }
+
     std::string FileController::makeUniqueName(const std::string &originalFilename)
     {
-        const fs::path base = fs::path(originalFilename).filename();
-        return randomHex(32) + "_" + base.string();
+        const std::string display = sanitizeDisplayFilename(originalFilename);
+        const fs::path base = fs::path(display);
+        const std::string ext = base.extension().string();
+        std::string stem = base.stem().string();
+        if (stem.empty())
+            stem = "unnamed-file";
+        return randomHex(32) + "_" + stem + ext;
     }
 
     void FileController::handleUpload(const httplib::Request &req, httplib::Response &res)
@@ -354,55 +269,39 @@ namespace server::services
 
         try
         {
-            std::string filename;
-            std::string fileBytes;
-
-            // Prefer httplib multipart parsing (reliable for browser uploads)
-            if (req.form.has_file("file"))
+            if (!req.form.has_file("file"))
             {
-                const httplib::FormData uploaded = req.form.get_file("file");
-                filename = uploaded.filename;
-                fileBytes = uploaded.content;
-            }
-            else
-            {
-                const std::string boundary = extractBoundary(contentType);
-                if (boundary.empty())
-                {
-                    res.status = 400;
-                    res.set_content("Bad Request: missing multipart boundary", "text/plain");
-                    return;
-                }
-
-                MultipartParser parser(req.body, boundary);
-                const std::optional<ParseResult> result = parser.parse();
-
-                if (!result)
-                {
-                    res.status = 400;
-                    res.set_content("Bad Request: Could not parse file content", "text/plain");
-                    return;
-                }
-
-                filename = result->filename;
-                fileBytes = result->fileContent;
+                res.status = 400;
+                res.set_content(
+                    "Bad Request: missing multipart field 'file' (field name must be \"file\")",
+                    "text/plain");
+                return;
             }
 
-            if (filename.empty())
-                filename = "unnamed-file";
+            const httplib::FormData uploaded = req.form.get_file("file");
+            if (uploaded.content.empty())
+            {
+                res.status = 400;
+                res.set_content("Bad Request: empty file upload", "text/plain");
+                return;
+            }
 
-            const std::string uniqueFilename = makeUniqueName(filename);
+            std::string filename = uploaded.filename;
+
+            const std::string displayName = sanitizeDisplayFilename(filename);
+
+            const std::string uniqueFilename = makeUniqueName(displayName);
             const fs::path filePath = uploadDir_ / uniqueFilename;
 
             {
                 std::ofstream fos(filePath, std::ios::binary);
-                fos.write(fileBytes.data(),
-                          static_cast<std::streamsize>(fileBytes.size()));
+                fos.write(uploaded.content.data(),
+                          static_cast<std::streamsize>(uploaded.content.size()));
                 if (!fos)
                     throw std::runtime_error("failed to write uploaded file");
             }
 
-            const int port = fileSharer_.offerFile(filePath.string());
+            const int port = fileSharer_.offerFile(filePath.string(), displayName);
 
             std::thread([this, port]()
                         { fileSharer_.startFileServer(port); })
@@ -476,6 +375,11 @@ namespace server::services
                 throw std::runtime_error(std::strerror(errno));
             }
 
+            std::string filename = "downloaded-file";
+            std::string lookupName;
+            if (fileSharer_.tryGetDownloadName(peerPort, lookupName))
+                filename = lookupName;
+
             std::string header;
             if (!recvLine(sock, header))
             {
@@ -485,10 +389,13 @@ namespace server::services
             if (!header.empty() && header.back() == '\r')
                 header.pop_back();
 
-            std::string filename = "downloaded-file";
             const std::string prefix = "Filename: ";
             if (header.rfind(prefix, 0) == 0)
-                filename = header.substr(prefix.size());
+            {
+                const std::string fromPeer = header.substr(prefix.size());
+                if (!fromPeer.empty())
+                    filename = fromPeer;
+            }
 
             const fs::path tempFile =
                 fs::temp_directory_path() / ("download-" + randomHex(8) + ".tmp");
@@ -516,6 +423,7 @@ namespace server::services
             res.status = 200;
             res.set_header("Content-Disposition",
                            "attachment; filename=\"" + filename + "\"");
+            res.set_header("X-Filename", filename);
             res.set_content(buffer.str(), "application/octet-stream");
 
             std::error_code ec;

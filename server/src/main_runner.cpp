@@ -44,7 +44,11 @@ int main()
     std::signal(SIGTERM, onSignal);
 
     server::services::FileController controller(port);
-    controller.start();
+    if (!controller.start())
+    {
+        std::cerr << "Failed to start PeerLink API on port " << port << '\n';
+        return 1;
+    }
 
     while (g_keepRunning)
         std::this_thread::sleep_for(std::chrono::milliseconds(200));

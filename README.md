@@ -12,8 +12,12 @@ Build and run:
 cd server
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
-./build/server
+./scripts/run.sh
 ```
+
+`run.sh` stops any old process on port 8080 before starting (multiple stale servers will break uploads).
+
+If port 8080 is stuck: `lsof -ti :8080 | xargs kill -9`
 
 Default port is **8080** (override with `PORT=9000 ./build/server`).
 

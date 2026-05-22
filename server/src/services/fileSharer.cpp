@@ -16,7 +16,7 @@ namespace server::service
 {
     // namespace
     // {
-    void fileSenderHandler(int client_fd, std::string file_path)
+    void fileSenderHandler(int client_fd, std::string file_path, std::string download_name)
     {
         std::cout << "Starting to send file: " << file_path << '\n';
         std::ifstream input(file_path, std::ios::binary);
@@ -26,9 +26,8 @@ namespace server::service
             ::close(client_fd);
             return;
         }
-        // Send filename header: "Filename: <name>\n"
-        const std::string filename = std::filesystem::path(file_path).filename().string();
-        const std::string header = "Filename: " + filename + "\n";
+        // Send original display name (preserves extension for the downloader)
+        const std::string header = "Filename: " + download_name + "\n";
         {
             const char *p = header.data();
             std::size_t remaining = header.size();
@@ -64,19 +63,28 @@ namespace server::service
                 remaining -= static_cast<std::size_t>(sent);
             }
         }
-        std::cout << "File '" << filename << "' sent to client\n";
+        std::cout << "File '" << download_name << "' sent to client\n";
         ::close(client_fd);
     }
     // } // namespace
 
-    int FileSharer::offerFile(const std::string &filePath)
+    bool FileSharer::tryGetDownloadName(int port, std::string &outName) const
+    {
+        const auto it = available_files_.find(port);
+        if (it == available_files_.end())
+            return false;
+        outName = it->second.downloadName;
+        return !outName.empty();
+    }
+
+    int FileSharer::offerFile(const std::string &filePath, const std::string &downloadName)
     {
         while (true)
         {
             const int port = server::utils::generateCode();
             if (available_files_.find(port) == available_files_.end())
             {
-                available_files_.emplace(port, filePath);
+                available_files_.emplace(port, SharedFile{filePath, downloadName});
                 return port;
             }
         }
@@ -90,7 +98,9 @@ namespace server::service
             std::cerr << "No file associated with port: " << port << '\n';
             return;
         }
-        const std::string filePath = it->second;
+        const SharedFile &shared = it->second;
+        const std::string &filePath = shared.path;
+        const std::string &downloadName = shared.downloadName;
 
         const int server_fd = ::socket(AF_INET, SOCK_STREAM, 0);
         if (server_fd < 0)
@@ -133,9 +143,7 @@ namespace server::service
             return;
         }
 
-        std::cout << "Ready to serve file '"
-                  << std::filesystem::path(filePath).filename().string()
-                  << "' on port " << port << '\n';
+        std::cout << "Ready to serve file '" << downloadName << "' on port " << port << '\n';
 
         sockaddr_in client_addr{};
         socklen_t client_len = sizeof(client_addr);
@@ -154,7 +162,7 @@ namespace server::service
                                      sizeof(client_ip));
         std::cout << "Client connected: " << (ip ? ip : "?") << '\n';
 
-        std::thread sender(fileSenderHandler, client_fd, filePath);
+        std::thread sender(fileSenderHandler, client_fd, filePath, downloadName);
         sender.join();
         ::close(server_fd);
     }

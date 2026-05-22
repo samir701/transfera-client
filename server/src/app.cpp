@@ -45,9 +45,11 @@ namespace server
         std::signal(SIGTERM, onSignal);
 
         services::FileController controller(port);
-        controller.start();
-
-        std::cout << "PeerLink API listening on http://0.0.0.0:" << port << '\n';
+        if (!controller.start())
+        {
+            std::cerr << "Failed to start PeerLink API on port " << port << '\n';
+            return;
+        }
 
         while (g_keepRunning)
             std::this_thread::sleep_for(std::chrono::milliseconds(200));
