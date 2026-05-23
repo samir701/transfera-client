@@ -37,7 +37,7 @@ echo "${CODE:-FAIL: UI not responding on 127.0.0.1:${CLIENT_PORT}}"
 echo
 
 echo "--- UI files ---"
-OUT=/opt/p2p_file_sharer_in_cpp/client/out/index.html
+OUT=/opt/transfera-client/client/out/index.html
 [[ -f "$OUT" ]] && echo "OK: $OUT" || echo "MISSING: $OUT — run ./deploy/linode/build-ui.sh $IP"
 echo
 

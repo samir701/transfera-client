@@ -7,12 +7,12 @@
 
 Set `CLIENT_PORT=80` in `/etc/transfera/env` so `curl http://YOUR_IP/` works. Use `CLIENT_PORT=3000` if you prefer `http://YOUR_IP:3000/`.
 
-The UI is built with `NEXT_PUBLIC_API_BASE_URL=http://YOUR_IP:8080` so the browser calls the API on **8080**.
+The UI is built with `NEXT_PUBLIC_API_BASE_URL=https://transfera-api.onrender.com` by default (Render). Self-hosted Linode uses `http://YOUR_IP:8080`.
 
 ## Setup
 
 ```bash
-cd /opt/p2p_file_sharer_in_cpp
+cd /opt/transfera-client
 git pull
 chmod +x deploy/linode/*.sh
 apt update && apt install -y git cmake g++ nodejs npm iptables

@@ -58,12 +58,12 @@ lsof -ti :8080 | xargs kill -9</code></pre>
       <table>
         <thead><tr><th>Asset</th><th>URL</th></tr></thead>
         <tbody>
-          <tr><td>Next.js app</td><td><a href="https://dasanik2001.github.io/p2p_file_sharer_in_cpp/">https://dasanik2001.github.io/p2p_file_sharer_in_cpp/</a></td></tr>
-          <tr><td>This manual</td><td><a href="https://dasanik2001.github.io/p2p_file_sharer_in_cpp/manual/">https://dasanik2001.github.io/p2p_file_sharer_in_cpp/manual/</a></td></tr>
+          <tr><td>Next.js app</td><td><a href="https://dasanik2001.github.io/transfera-client/">https://dasanik2001.github.io/transfera-client/</a></td></tr>
+          <tr><td>This manual</td><td><a href="https://dasanik2001.github.io/transfera-client/manual/">https://dasanik2001.github.io/transfera-client/manual/</a></td></tr>
         </tbody>
       </table>
       <p>Manual files live in <code>client/public/manual/</code> and copy to <code>out/manual/</code> on <code>npm run build</code>.</p>
-      <p><strong>Note:</strong> GitHub Pages hosts static files only — the C++ API must run on a machine you control (<code>127.0.0.1:8080</code> for local dev).</p>
+      <p><strong>Note:</strong> GitHub Pages hosts static files only — production API: <code>https://transfera-api.onrender.com</code> (Render). Local dev: <code>127.0.0.1:8080</code>.</p>
 
       <h2>6. Deploy manual updates</h2>
       <pre><code>git add client/public/manual

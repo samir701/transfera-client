@@ -1,9 +1,9 @@
 /** @type {import('next').NextConfig} */
 const isProd = process.env.NODE_ENV === 'production'
-const repo = 'p2p_file_sharer_in_cpp' // GitHub Pages repo name
+const repo = 'transfera-client' // GitHub Pages repo name
 
 // Linode / same-origin: NEXT_PUBLIC_BASE_PATH= (empty)
-// GitHub Pages: unset in prod → /p2p_file_sharer_in_cpp, or set explicitly in CI
+// GitHub Pages: unset in prod → /transfera-client, or set explicitly in CI
 const basePath =
   process.env.NEXT_PUBLIC_BASE_PATH !== undefined
     ? process.env.NEXT_PUBLIC_BASE_PATH

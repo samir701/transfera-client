@@ -6,7 +6,7 @@ import FileDownload from '@/components/FileDownload';
 import InviteCode from '@/components/InviteCode';
 import axios from 'axios';
 import { apiUrl, API_BASE_URL } from '@/lib/api';
-import { sitePath } from '@/lib/site';
+import { sitePath, githubPagesUrl } from '@/lib/site';
 import {
   getResponseHeader,
   resolveDownloadFilename,
@@ -184,7 +184,7 @@ export default function Home() {
           </a>
           {' · '}
           <a
-            href="https://dasanik2001.github.io/p2p_file_sharer_in_cpp/manual/"
+            href={githubPagesUrl('/manual/')}
             className="text-blue-600 hover:underline"
             target="_blank"
             rel="noopener noreferrer"

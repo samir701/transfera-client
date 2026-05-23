@@ -46,7 +46,13 @@ npm run dev
 
 `NEXT_PUBLIC_API_BASE_URL` must point at the C++ server (required for static export / production hosting).
 
-## Deploy on Linode (UI :3000 + API :8080)
+Production default: **https://transfera-api.onrender.com** (Render). See **[docs/render-deploy.md](docs/render-deploy.md)**.
+
+```bash
+curl https://transfera-api.onrender.com/api/health
+```
+
+## Deploy on Linode (optional self-host)
 
 See **[docs/linode-deploy.md](docs/linode-deploy.md)** — client and C++ API on separate ports; optional map **:80 → :3000**.
 
@@ -65,7 +71,7 @@ Open `http://YOUR_LINODE_IP:3000/` (UI calls API on `:8080`).
 
 Full architecture documentation (threads, sockets, FDs, upload/download pipelines):
 
-- **Manual:** https://dasanik2001.github.io/p2p_file_sharer_in_cpp/manual/
-- **Live app:** https://dasanik2001.github.io/p2p_file_sharer_in_cpp/
+- **Manual:** https://dasanik2001.github.io/transfera-client/manual/
+- **Live app:** https://dasanik2001.github.io/transfera-client/
 
 Source: `client/public/manual/` (deployed with the client static build).

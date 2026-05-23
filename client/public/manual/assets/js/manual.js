@@ -14,8 +14,8 @@
     { href: 'operations.html', label: 'Operations & troubleshooting' },
   ];
 
-  const APP_URL = 'https://dasanik2001.github.io/p2p_file_sharer_in_cpp/';
-  const MANUAL_URL = 'https://dasanik2001.github.io/p2p_file_sharer_in_cpp/manual/';
+  const APP_URL = 'https://dasanik2001.github.io/transfera-client/';
+  const MANUAL_URL = 'https://dasanik2001.github.io/transfera-client/manual/';
 
   const navEl = document.getElementById('manual-nav-list');
   if (navEl) {

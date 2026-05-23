@@ -7,9 +7,9 @@ Wants=network-online.target
 Type=simple
 User=root
 EnvironmentFile=/etc/transfera/env
-WorkingDirectory=/opt/p2p_file_sharer_in_cpp/server
+WorkingDirectory=/opt/transfera-client/server
 Environment=PORT=8080
-ExecStart=/opt/p2p_file_sharer_in_cpp/server/build/server
+ExecStart=/opt/transfera-client/server/build/server
 Restart=on-failure
 RestartSec=5
 
