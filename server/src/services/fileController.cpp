@@ -146,16 +146,19 @@ namespace server::services
 
     void FileController::stop()
     {
-        if (!running_.exchange(false))
+        const bool wasRunning = running_.exchange(false);
+        if (!wasRunning)
         {
             if (serverThread_.joinable())
                 serverThread_.join();
+            fileSharer_.shutdown();
             return;
         }
 
         server_.stop();
         if (serverThread_.joinable())
             serverThread_.join();
+        fileSharer_.shutdown();
         server::log::info("API server stopped");
     }
 

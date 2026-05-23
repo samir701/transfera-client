@@ -1,8 +1,11 @@
 #pragma once
 
+#include <atomic>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 
 namespace server::service
@@ -15,12 +18,19 @@ namespace server::service
         int maxDownloads{1};
         int downloadCount{0};
         bool transferInProgress{false};
+        std::chrono::steady_clock::time_point offeredAt{};
     };
 
     class FileSharer
     {
     public:
-        FileSharer() = default;
+        FileSharer();
+        ~FileSharer();
+
+        FileSharer(const FileSharer &) = delete;
+        FileSharer &operator=(const FileSharer &) = delete;
+
+        void shutdown();
 
         int offerFile(const std::string &filePath, const std::string &downloadName,
                       int maxDownloads = 1);
@@ -42,10 +52,23 @@ namespace server::service
         std::unordered_map<int, SharedFile> available_files_;
         std::unordered_map<int, std::unique_ptr<std::mutex>> portTransferMutexes_;
 
+        std::thread expirySweeperThread_;
+        std::atomic<bool> stopExpirySweeper_{false};
+        std::atomic<bool> expirySweeperStarted_{false};
+
+        static std::chrono::seconds inviteTtl();
+        static std::chrono::seconds expirySweepInterval();
+
+        void ensureExpirySweeperStarted();
+        void expirySweeperLoop();
+        void purgeExpiredInvites();
+        bool isInviteExpired(const SharedFile &file) const;
+
         std::mutex &transferMutexForPort(int port);
         bool claimInviteForTransfer(int port, SharedFile &outFile, std::string &outError);
         void releaseInviteClaim(int port);
         void consumeInvite(int port, const std::string &filePath);
+        void expireIdleInvite(int port, const std::string &filePath);
         void recordSuccessfulDownload(int port, const std::string &filePath,
                                       int &outDownloadsRemaining);
     };

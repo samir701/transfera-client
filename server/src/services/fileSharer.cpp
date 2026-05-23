@@ -5,7 +5,10 @@
 #include <algorithm>
 #include <arpa/inet.h>
 #include <cerrno>
+#include <cstdlib>
 #include <cstring>
+#include <utility>
+#include <vector>
 #include <filesystem>
 #include <fstream>
 #include <future>
@@ -114,6 +117,112 @@ namespace server::service
 
     } // namespace
 
+    FileSharer::FileSharer() = default;
+
+    FileSharer::~FileSharer() { shutdown(); }
+
+    void FileSharer::shutdown()
+    {
+        stopExpirySweeper_ = true;
+        if (expirySweeperThread_.joinable())
+            expirySweeperThread_.join();
+    }
+
+    std::chrono::seconds FileSharer::inviteTtl()
+    {
+        constexpr int kDefaultSeconds = 300; // 5 minutes
+        if (const char *v = std::getenv("TRANSFERA_INVITE_TTL_SEC"); v && *v)
+        {
+            try
+            {
+                const long sec = std::stol(v);
+                if (sec > 0)
+                    return std::chrono::seconds(sec);
+            }
+            catch (...)
+            {
+            }
+        }
+        return std::chrono::seconds(kDefaultSeconds);
+    }
+
+    std::chrono::seconds FileSharer::expirySweepInterval()
+    {
+        return std::chrono::seconds(15);
+    }
+
+    void FileSharer::ensureExpirySweeperStarted()
+    {
+        if (expirySweeperStarted_.exchange(true))
+            return;
+
+        stopExpirySweeper_ = false;
+        expirySweeperThread_ = std::thread([this] { expirySweeperLoop(); });
+        if (server::log::verboseEnabled())
+        {
+            server::log::info("invite expiry sweeper started (ttl=" +
+                              std::to_string(inviteTtl().count()) + "s)");
+        }
+    }
+
+    void FileSharer::expirySweeperLoop()
+    {
+        while (!stopExpirySweeper_.load())
+        {
+            purgeExpiredInvites();
+            const auto step = expirySweepInterval();
+            for (int i = 0; i < step.count() && !stopExpirySweeper_.load(); ++i)
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+    }
+
+    bool FileSharer::isInviteExpired(const SharedFile &file) const
+    {
+        if (file.downloadCount > 0)
+            return false;
+        const auto now = std::chrono::steady_clock::now();
+        return (now - file.offeredAt) >= inviteTtl();
+    }
+
+    void FileSharer::purgeExpiredInvites()
+    {
+        std::vector<std::pair<int, std::string>> expired;
+        {
+            std::lock_guard lock(mapMutex_);
+            const auto now = std::chrono::steady_clock::now();
+            const auto ttl = inviteTtl();
+            for (const auto &[port, file] : available_files_)
+            {
+                if (file.downloadCount > 0)
+                    continue;
+                if (file.transferInProgress)
+                    continue;
+                if ((now - file.offeredAt) >= ttl)
+                    expired.emplace_back(port, file.path);
+            }
+        }
+
+        for (const auto &[port, path] : expired)
+            expireIdleInvite(port, path);
+    }
+
+    void FileSharer::expireIdleInvite(int port, const std::string &filePath)
+    {
+        {
+            std::lock_guard lock(mapMutex_);
+            const auto it = available_files_.find(port);
+            if (it == available_files_.end())
+                return;
+            if (it->second.downloadCount > 0 || it->second.transferInProgress)
+                return;
+        }
+
+        server::log::info("P2P invite expired invite_port=" + std::to_string(port) +
+                          " (no download within " + std::to_string(inviteTtl().count()) +
+                          "s)");
+        consumeInvite(port, filePath);
+    }
+
     std::mutex &FileSharer::transferMutexForPort(int port)
     {
         std::lock_guard lock(mapMutex_);
@@ -145,26 +254,42 @@ namespace server::service
 
     bool FileSharer::claimInviteForTransfer(int port, SharedFile &outFile, std::string &outError)
     {
-        std::lock_guard lock(mapMutex_);
-        const auto it = available_files_.find(port);
-        if (it == available_files_.end())
+        purgeExpiredInvites();
+
+        std::string pathToExpire;
+        bool claimed = false;
         {
-            outError = "invalid or expired invite code";
-            return false;
+            std::lock_guard lock(mapMutex_);
+            const auto it = available_files_.find(port);
+            if (it == available_files_.end())
+            {
+                outError = "invalid or expired invite code";
+            }
+            else if (isInviteExpired(it->second))
+            {
+                outError = "invalid or expired invite code";
+                if (!it->second.transferInProgress)
+                    pathToExpire = it->second.path;
+            }
+            else if (it->second.downloadCount >= it->second.maxDownloads)
+            {
+                outError = "invalid or expired invite code";
+            }
+            else if (it->second.transferInProgress)
+            {
+                outError = "download already in progress";
+            }
+            else
+            {
+                it->second.transferInProgress = true;
+                outFile = it->second;
+                claimed = true;
+            }
         }
-        if (it->second.downloadCount >= it->second.maxDownloads)
-        {
-            outError = "invalid or expired invite code";
-            return false;
-        }
-        if (it->second.transferInProgress)
-        {
-            outError = "download already in progress";
-            return false;
-        }
-        it->second.transferInProgress = true;
-        outFile = it->second;
-        return true;
+
+        if (!pathToExpire.empty())
+            expireIdleInvite(port, pathToExpire);
+        return claimed;
     }
 
     void FileSharer::releaseInviteClaim(int port)
@@ -243,6 +368,9 @@ namespace server::service
         if (maxDownloads < 1)
             maxDownloads = 1;
 
+        ensureExpirySweeperStarted();
+        purgeExpiredInvites();
+
         std::lock_guard lock(mapMutex_);
         while (true)
         {
@@ -253,11 +381,13 @@ namespace server::service
                 entry.path = filePath;
                 entry.downloadName = downloadName;
                 entry.maxDownloads = maxDownloads;
+                entry.offeredAt = std::chrono::steady_clock::now();
                 available_files_.emplace(port, std::move(entry));
                 if (server::log::verboseEnabled())
                 {
                     server::log::info("P2P offer: invite_port=" + std::to_string(port) +
                                       " max_downloads=" + std::to_string(maxDownloads) +
+                                      " ttl_sec=" + std::to_string(inviteTtl().count()) +
                                       " path=" + filePath + " name=" + downloadName);
                 }
                 return port;
