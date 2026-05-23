@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start PeerLink C++ API — kills any stale process on port 8080 first.
+# Start Transfera C++ API — kills any stale process on port 8080 first.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -85,7 +85,7 @@ namespace server::services
 
     FileController::FileController(int port)
         : port_(port),
-          uploadDir_(getTempDir() / "peerlink-uploads")
+          uploadDir_(getTempDir() / "transfera-uploads")
     {
         std::error_code ec;
         fs::create_directories(uploadDir_, ec);
@@ -139,7 +139,7 @@ namespace server::services
             return false;
         }
 
-        std::cout << "PeerLink API on http://0.0.0.0:" << port_ << '\n';
+        std::cout << "Transfera API on http://0.0.0.0:" << port_ << '\n';
         std::cout << "  GET  http://0.0.0.0:" << port_ << "/api/health\n";
         std::cout << "  POST http://0.0.0.0:" << port_ << "/api/upload\n";
         std::cout << "  GET  http://0.0.0.0:" << port_ << "/api/download/<port>\n";

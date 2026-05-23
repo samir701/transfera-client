@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Map inbound port 80 → client port so http://LINODE_IP/ opens the UI.
-# Requires PUBLIC_CLIENT_PORT=80 and CLIENT_PORT=3000 in /etc/peerlink/env
+# Requires PUBLIC_CLIENT_PORT=80 and CLIENT_PORT=3000 in /etc/transfera/env
 set -euo pipefail
 
-if [[ -f /etc/peerlink/env ]]; then
+if [[ -f /etc/transfera/env ]]; then
   # shellcheck disable=SC1091
-  source /etc/peerlink/env
+  source /etc/transfera/env
 fi
 
 PUBLIC_PORT="${PUBLIC_CLIENT_PORT:-80}"

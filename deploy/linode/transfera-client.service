@@ -1,14 +1,14 @@
 [Unit]
-Description=PeerLink Next.js static UI
-After=network-online.target peerlink-api.service
+Description=Transfera Next.js static UI
+After=network-online.target transfera-api.service
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
-EnvironmentFile=-/etc/peerlink/env
+EnvironmentFile=-/etc/transfera/env
 Environment=CLIENT_PORT=3000
-# Override in /etc/peerlink/env (80 works via python in run-client.sh)
+# Override in /etc/transfera/env (80 works via python in run-client.sh)
 WorkingDirectory=/opt/p2p_file_sharer_in_cpp/client
 ExecStart=/opt/p2p_file_sharer_in_cpp/deploy/linode/run-client.sh
 Restart=on-failure

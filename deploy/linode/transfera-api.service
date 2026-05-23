@@ -1,12 +1,12 @@
 [Unit]
-Description=PeerLink C++ API
+Description=Transfera C++ API
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
-EnvironmentFile=/etc/peerlink/env
+EnvironmentFile=/etc/transfera/env
 WorkingDirectory=/opt/p2p_file_sharer_in_cpp/server
 Environment=PORT=8080
 ExecStart=/opt/p2p_file_sharer_in_cpp/server/build/server

@@ -5,7 +5,7 @@
 | **UI** (`client/out`) | **3000** (default) or **80** | `http://YOUR_IP:3000/` or `http://YOUR_IP/` |
 | **C++ API** | **8080** | `http://YOUR_IP:8080/api/health` |
 
-Set `CLIENT_PORT=80` in `/etc/peerlink/env` so `curl http://YOUR_IP/` works. Use `CLIENT_PORT=3000` if you prefer `http://YOUR_IP:3000/`.
+Set `CLIENT_PORT=80` in `/etc/transfera/env` so `curl http://YOUR_IP/` works. Use `CLIENT_PORT=3000` if you prefer `http://YOUR_IP:3000/`.
 
 The UI is built with `NEXT_PUBLIC_API_BASE_URL=http://YOUR_IP:8080` so the browser calls the API on **8080**.
 
@@ -25,7 +25,7 @@ fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /
 
 ```bash
 ./deploy/linode/install-services.sh
-nano /etc/peerlink/env   # set LINODE_IP, NEXT_PUBLIC_API_BASE_URL=http://IP:8080
+nano /etc/transfera/env   # set LINODE_IP, NEXT_PUBLIC_API_BASE_URL=http://IP:8080
 ```
 
 ### Build
@@ -50,8 +50,8 @@ Do not run `npm ci` with `NODE_ENV=production` (skips dev/build deps).
 ### Start
 
 ```bash
-systemctl start peerlink-api peerlink-client
-systemctl status peerlink-api peerlink-client
+systemctl start transfera-api transfera-client
+systemctl status transfera-api transfera-client
 ```
 
 ### Firewall (required — otherwise curl hangs from your Mac)
@@ -96,7 +96,7 @@ curl -sI --connect-timeout 5 http://YOUR_IP/
 git pull
 JOBS=1 ./deploy/linode/build-server.sh
 ./deploy/linode/build-ui.sh YOUR_LINODE_IP
-systemctl restart peerlink-api peerlink-client
+systemctl restart transfera-api transfera-client
 ```
 
 ## Dev mode (optional, not systemd)
@@ -122,3 +122,15 @@ API_PROXY_TARGET=http://127.0.0.1:8080 NEXT_PUBLIC_API_BASE_URL=http://YOUR_IP:3
 Browser → http://IP:3000 (or :80 mapped)  →  serve (client/out)
 Browser → http://IP:8080/api/*            →  C++ server
 ```
+
+## Renamed from PeerLink → Transfera
+
+If you previously used `peerlink-api` / `peerlink-client`:
+
+```bash
+systemctl disable --now peerlink-api peerlink-client 2>/dev/null || true
+./deploy/linode/install-services.sh
+# migrate env: cp /etc/peerlink/env /etc/transfera/env  (if needed)
+systemctl start transfera-api transfera-client
+```
+

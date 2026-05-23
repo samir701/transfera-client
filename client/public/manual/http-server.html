@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>HTTP Server — PeerLink Manual</title>
+  <title>HTTP Server — Transfera Manual</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/css/manual.css" />
 </head>
 <body>
   <div class="layout">
     <nav class="sidebar">
-      <div class="brand">PeerLink Manual</div>
+      <div class="brand">Transfera Manual</div>
       <div class="deploy-links">
         <a id="deploy-app-link" href="#">Live app</a>
         <a id="deploy-manual-link" href="#">This manual</a>
@@ -24,7 +24,7 @@
       <h2>1. Construction</h2>
       <pre><code>FileController::FileController(int port)
     : port_(port),
-      uploadDir_(getTempDir() / "peerlink-uploads")
+      uploadDir_(getTempDir() / "transfera-uploads")
 {
     fs::create_directories(uploadDir_, ec);
     server_.set_read_timeout(120, 0);

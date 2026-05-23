@@ -53,10 +53,10 @@ See **[docs/linode-deploy.md](docs/linode-deploy.md)** — client and C++ API on
 ```bash
 chmod +x deploy/linode/*.sh
 ./deploy/linode/install-services.sh
-# edit /etc/peerlink/env
+# edit /etc/transfera/env
 JOBS=1 ./deploy/linode/build-server.sh
 ./deploy/linode/build-ui.sh YOUR_LINODE_IP
-systemctl start peerlink-api peerlink-client
+systemctl start transfera-api transfera-client
 ```
 
 Open `http://YOUR_LINODE_IP:3000/` (UI calls API on `:8080`).

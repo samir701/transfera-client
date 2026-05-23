@@ -5,7 +5,7 @@ import { Inter } from 'next/font/google'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'PeerLink - P2P File Sharing',
+  title: 'Transfera - P2P File Sharing',
   description: 'Securely share files peer-to-peer',
 }
 

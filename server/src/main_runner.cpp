@@ -46,7 +46,7 @@ int main()
     server::services::FileController controller(port);
     if (!controller.start())
     {
-        std::cerr << "Failed to start PeerLink API on port " << port << '\n';
+        std::cerr << "Failed to start Transfera API on port " << port << '\n';
         return 1;
     }
 

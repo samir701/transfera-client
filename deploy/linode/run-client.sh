@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ENV_FILE=/etc/peerlink/env
+ENV_FILE=/etc/transfera/env
 if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1091
   source "$ENV_FILE"
