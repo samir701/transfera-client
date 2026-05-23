@@ -146,35 +146,35 @@ export default function Home() {
       </header>
 
       <div className="bg-white rounded-lg shadow-lg p-6">
-        <div className="flex border-b mb-6">
-          <button
-            className={`px-4 py-2 font-medium ${activeTab === 'upload'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-gray-500 hover:text-gray-700'
-              }`}
-            onClick={() => setActiveTab('upload')}
-          >
-            Share a File
-          </button>
-          <button
-            className={`px-4 py-2 font-medium ${activeTab === 'download'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-gray-500 hover:text-gray-700'
-              }`}
-            onClick={() => setActiveTab('download')}
-          >
-            Receive a File
-          </button>
-        </div>
+        <div className="flex items-end justify-between gap-4 border-b mb-6">
+          <div className="flex">
+            <button
+              className={`px-4 py-2 font-medium ${activeTab === 'upload'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+                }`}
+              onClick={() => setActiveTab('upload')}
+            >
+              Share a File
+            </button>
+            <button
+              className={`px-4 py-2 font-medium ${activeTab === 'download'
+                ? 'text-blue-600 border-b-2 border-blue-600'
+                : 'text-gray-500 hover:text-gray-700'
+                }`}
+              onClick={() => setActiveTab('download')}
+            >
+              Receive a File
+            </button>
+          </div>
 
-        {activeTab === 'upload' ? (
-          <div>
-            <div className="mb-4">
+          {activeTab === 'upload' && (
+            <div className="flex flex-row items-end pb-2 shrink-0">
               <label
                 htmlFor="maxDownloads"
-                className="block text-sm font-medium text-gray-700 mb-1"
+                className="text-sm font-medium text-gray-700 mb-1 mr-1"
               >
-                Max downloads (P2P)
+                Max downloads:
               </label>
               <input
                 type="number"
@@ -186,13 +186,15 @@ export default function Home() {
                   setMaxDownloads(parseMaxDownloadsInput(e.target.value))
                 }
                 disabled={isUploading}
-                className="input-field max-w-[8rem]"
+                className="input-field w-12 h-8 text-center"
+                title="Invite is removed after this many successful downloads"
               />
-              <p className="mt-1 text-xs text-gray-500">
-                Default 1. Invite is removed after this many successful downloads.
-              </p>
             </div>
+          )}
+        </div>
 
+        {activeTab === 'upload' ? (
+          <div>
             <FileUpload onFileUpload={handleFileUpload} isUploading={isUploading} />
 
             {uploadedFile && !isUploading && (
