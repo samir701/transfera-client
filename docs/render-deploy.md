@@ -84,4 +84,4 @@ Start C++ API: `cd server && ./scripts/run.sh`
 
 - Service sleeps when idle (cold start ~30–60s)
 - Upload + download must hit the **same** Render instance (in-memory invite map + `/tmp` files)
-- Download uses **one-shot P2P** per invite (`socketpair` + stream); after success the invite and temp file are removed
+- Download uses **one-shot P2P** per invite (`socketpair` + stream); `maxDownloads` from upload (default 1) — invite removed after limit

@@ -28,6 +28,6 @@ for _ in $(seq 1 50); do
   sleep 0.05
 done
 
-KILL_STALE=0 API="$API" "$ROOT/scripts/test-p2p-download.sh"
+KILL_STALE=0 API="$API" MAX_DOWNLOADS="${MAX_DOWNLOADS:-1}" "$ROOT/scripts/test-p2p-download.sh"
 echo "--- P2P log (${LOG}) ---"
 grep P2P "$LOG" || true

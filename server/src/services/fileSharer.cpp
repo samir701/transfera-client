@@ -2,6 +2,7 @@
 #include "server/logging.hpp"
 #include "server/utils/uploadUtils.hpp"
 
+#include <algorithm>
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
@@ -151,6 +152,11 @@ namespace server::service
             outError = "invalid or expired invite code";
             return false;
         }
+        if (it->second.downloadCount >= it->second.maxDownloads)
+        {
+            outError = "invalid or expired invite code";
+            return false;
+        }
         if (it->second.transferInProgress)
         {
             outError = "download already in progress";
@@ -191,18 +197,67 @@ namespace server::service
         }
     }
 
-    int FileSharer::offerFile(const std::string &filePath, const std::string &downloadName)
+    void FileSharer::recordSuccessfulDownload(int port, const std::string &filePath,
+                                              int &outDownloadsRemaining)
     {
+        std::string pathToRemove = filePath;
+        bool removeInvite = false;
+        int completed = 0;
+        int maxAllowed = 1;
+
+        {
+            std::lock_guard lock(mapMutex_);
+            const auto it = available_files_.find(port);
+            if (it == available_files_.end())
+            {
+                outDownloadsRemaining = 0;
+                return;
+            }
+            it->second.transferInProgress = false;
+            it->second.downloadCount += 1;
+            completed = it->second.downloadCount;
+            maxAllowed = it->second.maxDownloads;
+            outDownloadsRemaining = std::max(0, maxAllowed - completed);
+            if (completed >= maxAllowed)
+            {
+                removeInvite = true;
+                pathToRemove = it->second.path;
+            }
+        }
+
+        if (server::log::verboseEnabled())
+        {
+            server::log::info("P2P download recorded invite_port=" + std::to_string(port) +
+                              " count=" + std::to_string(completed) + "/" +
+                              std::to_string(maxAllowed) + " remaining=" +
+                              std::to_string(outDownloadsRemaining));
+        }
+
+        if (removeInvite)
+            consumeInvite(port, pathToRemove);
+    }
+
+    int FileSharer::offerFile(const std::string &filePath, const std::string &downloadName,
+                              int maxDownloads)
+    {
+        if (maxDownloads < 1)
+            maxDownloads = 1;
+
         std::lock_guard lock(mapMutex_);
         while (true)
         {
             const int port = server::utils::generateCode();
             if (available_files_.find(port) == available_files_.end())
             {
-                available_files_.emplace(port, SharedFile{filePath, downloadName});
+                SharedFile entry;
+                entry.path = filePath;
+                entry.downloadName = downloadName;
+                entry.maxDownloads = maxDownloads;
+                available_files_.emplace(port, std::move(entry));
                 if (server::log::verboseEnabled())
                 {
                     server::log::info("P2P offer: invite_port=" + std::to_string(port) +
+                                      " max_downloads=" + std::to_string(maxDownloads) +
                                       " path=" + filePath + " name=" + downloadName);
                 }
                 return port;
@@ -211,7 +266,8 @@ namespace server::service
     }
 
     bool FileSharer::receiveViaLocalP2P(int port, std::string &outFilename,
-                                        std::string &outBody, std::string &outError)
+                                        std::string &outBody, std::string &outError,
+                                        int *outDownloadsRemaining)
     {
         SharedFile shared;
         if (!claimInviteForTransfer(port, shared, outError))
@@ -305,9 +361,13 @@ namespace server::service
 
         outFilename = filename;
         claimGuard.keep = true;
-        consumeInvite(port, shared.path);
+        int remaining = 0;
+        recordSuccessfulDownload(port, shared.path, remaining);
+        if (outDownloadsRemaining)
+            *outDownloadsRemaining = remaining;
         server::log::info("P2P download complete invite_port=" + std::to_string(port) +
-                          " name=" + filename + " bytes=" + std::to_string(outBody.size()));
+                          " name=" + filename + " bytes=" + std::to_string(outBody.size()) +
+                          " remaining=" + std::to_string(remaining));
         return true;
     }
 
@@ -351,7 +411,10 @@ namespace server::service
         if (client_fd >= 0)
         {
             if (fileSenderHandler(client_fd, shared.path, shared.downloadName))
-                consumeInvite(port, shared.path);
+            {
+                int remaining = 0;
+                recordSuccessfulDownload(port, shared.path, remaining);
+            }
             else
                 releaseInviteClaim(port);
         }

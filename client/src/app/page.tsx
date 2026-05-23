@@ -11,12 +11,22 @@ import {
   getResponseHeader,
   resolveDownloadFilename,
 } from '@/lib/downloadFilename';
+import { validateUploadFile } from '@/lib/uploadValidation';
+import {
+  DEFAULT_MAX_DOWNLOADS,
+  MAX_MAX_DOWNLOADS,
+  MIN_MAX_DOWNLOADS,
+  clampMaxDownloads,
+  parseMaxDownloadsInput,
+} from '@/lib/uploadLimits';
 
 export default function Home() {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [port, setPort] = useState<number | null>(null);
+  const [maxDownloads, setMaxDownloads] = useState(DEFAULT_MAX_DOWNLOADS);
+  const [inviteMaxDownloads, setInviteMaxDownloads] = useState(DEFAULT_MAX_DOWNLOADS);
   const [activeTab, setActiveTab] = useState<'upload' | 'download'>('upload');
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
 
@@ -39,12 +49,23 @@ export default function Home() {
   }, []);
 
   const handleFileUpload = async (file: File) => {
+    const validationError = validateUploadFile(file);
+    if (validationError) {
+      alert(validationError);
+      setUploadedFile(null);
+      setPort(null);
+      return;
+    }
+
     setUploadedFile(file);
     setIsUploading(true);
+
+    const allowedDownloads = clampMaxDownloads(maxDownloads);
 
     try {
       const formData = new FormData();
       formData.append('file', file);
+      formData.append('maxDownloads', String(allowedDownloads));
 
       // Do not set Content-Type manually — axios/browser must add the boundary parameter.
       const response = await axios.post(apiUrl('/api/upload'), formData);
@@ -53,7 +74,12 @@ export default function Home() {
       if (typeof invitePort !== 'number' || invitePort <= 0) {
         throw new Error('Invalid response from server');
       }
+      const serverMax =
+        typeof response.data?.maxDownloads === 'number'
+          ? clampMaxDownloads(response.data.maxDownloads)
+          : allowedDownloads;
       setPort(invitePort);
+      setInviteMaxDownloads(serverMax);
     } catch (error) {
       console.error('Error uploading file:', error);
       const message =
@@ -143,6 +169,30 @@ export default function Home() {
 
         {activeTab === 'upload' ? (
           <div>
+            <div className="mb-4">
+              <label
+                htmlFor="maxDownloads"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                Max downloads (P2P)
+              </label>
+              <input
+                type="number"
+                id="maxDownloads"
+                min={MIN_MAX_DOWNLOADS}
+                max={MAX_MAX_DOWNLOADS}
+                value={maxDownloads}
+                onChange={(e) =>
+                  setMaxDownloads(parseMaxDownloadsInput(e.target.value))
+                }
+                disabled={isUploading}
+                className="input-field max-w-[8rem]"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Default 1. Invite is removed after this many successful downloads.
+              </p>
+            </div>
+
             <FileUpload onFileUpload={handleFileUpload} isUploading={isUploading} />
 
             {uploadedFile && !isUploading && (
@@ -160,7 +210,7 @@ export default function Home() {
               </div>
             )}
 
-            <InviteCode port={port} />
+            <InviteCode port={port} maxDownloads={inviteMaxDownloads} />
           </div>
         ) : (
           <div>

@@ -47,6 +47,33 @@ namespace server::services
             res.set_header(key, val);
         }
 
+        constexpr int kMinMaxDownloads = 1;
+        constexpr int kMaxMaxDownloads = 100;
+
+        int parseMaxDownloadsField(const httplib::Request &req)
+        {
+            if (!req.form.has_field("maxDownloads"))
+                return 1;
+
+            const std::string raw = req.form.get_field("maxDownloads");
+            if (raw.empty())
+                return 1;
+
+            try
+            {
+                const long v = std::stol(raw);
+                if (v < kMinMaxDownloads)
+                    return kMinMaxDownloads;
+                if (v > kMaxMaxDownloads)
+                    return kMaxMaxDownloads;
+                return static_cast<int>(v);
+            }
+            catch (...)
+            {
+                return 1;
+            }
+        }
+
     } // namespace
 
     FileController::FileController(int port)
@@ -205,7 +232,8 @@ namespace server::services
                       "Content-Type, Authorization, Accept, X-Requested-With");
         setHeaderOnce(res, "Access-Control-Max-Age", "86400");
         setHeaderOnce(res, "Access-Control-Expose-Headers",
-                      "Content-Disposition, X-Filename, Content-Type, Content-Length");
+                      "Content-Disposition, X-Filename, X-Downloads-Remaining, Content-Type, "
+                      "Content-Length");
     }
 
     void FileController::handleCorsOrNotFound(const httplib::Request &req,
@@ -302,18 +330,20 @@ namespace server::services
                     throw std::runtime_error("failed to write uploaded file");
             }
 
-            const int port = fileSharer_.offerFile(filePath.string(), displayName);
+            const int maxDownloads = parseMaxDownloadsField(req);
+            const int port = fileSharer_.offerFile(filePath.string(), displayName, maxDownloads);
 
             if (server::log::verboseEnabled())
             {
                 server::log::info("upload saved: " + filePath.string() + " display=" +
                                   displayName + " invite_port=" + std::to_string(port) +
+                                  " max_downloads=" + std::to_string(maxDownloads) +
                                   " bytes=" + std::to_string(uploaded.content.size()));
             }
 
-            // P2P listener starts on download (coordinated), not on upload — avoids accept-slot races.
-
-            const std::string jsonResponse = "{\"port\": " + std::to_string(port) + "}";
+            const std::string jsonResponse =
+                "{\"port\": " + std::to_string(port) +
+                ", \"maxDownloads\": " + std::to_string(maxDownloads) + "}";
             res.status = 200;
             res.set_content(jsonResponse, "application/json");
         }
@@ -368,7 +398,9 @@ namespace server::services
             std::string filename;
             std::string body;
             std::string p2pError;
-            if (!fileSharer_.receiveViaLocalP2P(peerPort, filename, body, p2pError))
+            int downloadsRemaining = 0;
+            if (!fileSharer_.receiveViaLocalP2P(peerPort, filename, body, p2pError,
+                                                &downloadsRemaining))
             {
                 if (p2pError.find("invalid") != std::string::npos ||
                     p2pError.find("expired") != std::string::npos ||
@@ -391,6 +423,7 @@ namespace server::services
             setHeaderOnce(res, "Content-Disposition",
                           "attachment; filename=\"" + filename + "\"");
             setHeaderOnce(res, "X-Filename", filename);
+            setHeaderOnce(res, "X-Downloads-Remaining", std::to_string(downloadsRemaining));
             res.set_content(body, "application/octet-stream");
         }
         catch (const std::exception &e)

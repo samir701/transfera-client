@@ -5,9 +5,10 @@ import { FiCopy, FiCheck } from 'react-icons/fi';
 
 interface InviteCodeProps {
   port: number | null;
+  maxDownloads: number;
 }
 
-export default function InviteCode({ port }: InviteCodeProps) {
+export default function InviteCode({ port, maxDownloads }: InviteCodeProps) {
   const [copied, setCopied] = useState(false);
   
   if (!port) return null;
@@ -39,7 +40,8 @@ export default function InviteCode({ port }: InviteCodeProps) {
       </div>
       
       <p className="mt-3 text-xs text-gray-500">
-        This code will be valid as long as your file sharing session is active.
+        This invite allows up to {maxDownloads} download{maxDownloads === 1 ? '' : 's'} via P2P.
+        After that, the code is removed.
       </p>
     </div>
   );
