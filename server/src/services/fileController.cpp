@@ -83,6 +83,15 @@ namespace server::services
             return true;
         }
 
+        /** httplib headers.emplace duplicates keys — browsers reject duplicate CORS values. */
+        void setHeaderOnce(httplib::Response &res, const std::string &key,
+                           const std::string &val)
+        {
+            auto rng = res.headers.equal_range(key);
+            res.headers.erase(rng.first, rng.second);
+            res.set_header(key, val);
+        }
+
     } // namespace
 
     FileController::FileController(int port)
@@ -198,8 +207,9 @@ namespace server::services
                                   {
                                       if (res.status == 404)
                                           handleCorsOrNotFound(req, res);
-                                      else
-                                          applyCorsHeaders(res); });
+                                      // Route handlers already set CORS; do not call applyCorsHeaders
+                                      // again (duplicate Access-Control-Allow-Origin breaks browsers).
+                                  });
     }
 
     void FileController::setupHttpLogging()
@@ -234,14 +244,13 @@ namespace server::services
 
     void FileController::applyCorsHeaders(httplib::Response &res) const
     {
-        res.set_header("Access-Control-Allow-Origin", "*");
-        res.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-        res.set_header("Access-Control-Allow-Headers",
-                       "Content-Type, Authorization, Accept, X-Requested-With");
-        res.set_header("Access-Control-Max-Age", "86400");
-        // Required for axios/browser to read filename on cross-origin download (e.g. :3000 -> :8080)
-        res.set_header("Access-Control-Expose-Headers",
-                       "Content-Disposition, X-Filename, Content-Type, Content-Length");
+        setHeaderOnce(res, "Access-Control-Allow-Origin", "*");
+        setHeaderOnce(res, "Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+        setHeaderOnce(res, "Access-Control-Allow-Headers",
+                      "Content-Type, Authorization, Accept, X-Requested-With");
+        setHeaderOnce(res, "Access-Control-Max-Age", "86400");
+        setHeaderOnce(res, "Access-Control-Expose-Headers",
+                      "Content-Disposition, X-Filename, Content-Type, Content-Length");
     }
 
     void FileController::handleCorsOrNotFound(const httplib::Request &req,
