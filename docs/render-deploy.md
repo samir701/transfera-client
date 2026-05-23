@@ -83,4 +83,5 @@ Start C++ API: `cd server && ./scripts/run.sh`
 ## Limits (Render free tier)
 
 - Service sleeps when idle (cold start ~30–60s)
-- Upload + download must hit the **same** Render instance (in-memory P2P on `127.0.0.1`)
+- Upload + download must hit the **same** Render instance (in-memory invite map + `/tmp` files)
+- HTTP download reads the file **from disk** (no localhost P2P). Optional true P2P: set `TRANSFERA_ENABLE_P2P=1`

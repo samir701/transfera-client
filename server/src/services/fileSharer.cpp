@@ -81,6 +81,15 @@ namespace server::service
         return !outName.empty();
     }
 
+    bool FileSharer::tryGetSharedFile(int port, SharedFile &outFile) const
+    {
+        const auto it = available_files_.find(port);
+        if (it == available_files_.end())
+            return false;
+        outFile = it->second;
+        return !outFile.path.empty();
+    }
+
     int FileSharer::offerFile(const std::string &filePath, const std::string &downloadName)
     {
         while (true)

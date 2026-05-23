@@ -4,19 +4,13 @@
 
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 #include <fstream>
 #include <random>
 #include <thread>
 #include <sstream>
 #include <stdexcept>
-
-#include <arpa/inet.h>
-#include <cerrno>
-#include <cstring>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 namespace fs = std::filesystem;
 
@@ -45,44 +39,6 @@ namespace server::services
             return s;
         }
 
-        bool recvLine(int fd, std::string &outLine)
-        {
-            outLine.clear();
-            char c = 0;
-            while (true)
-            {
-                const ssize_t n = ::recv(fd, &c, 1, 0);
-                if (n == 0)
-                    return false;
-                if (n < 0)
-                    return false;
-                if (c == '\n')
-                    return true;
-                outLine.push_back(c);
-            }
-        }
-
-        bool recvAllToFile(int fd, const fs::path &outFile)
-        {
-            std::ofstream fos(outFile, std::ios::binary);
-            if (!fos)
-                return false;
-
-            char buffer[4096];
-            while (true)
-            {
-                const ssize_t n = ::recv(fd, buffer, sizeof(buffer), 0);
-                if (n == 0)
-                    break;
-                if (n < 0)
-                    return false;
-                fos.write(buffer, n);
-                if (!fos)
-                    return false;
-            }
-            return true;
-        }
-
         /** httplib headers.emplace duplicates keys — browsers reject duplicate CORS values. */
         void setHeaderOnce(httplib::Response &res, const std::string &key,
                            const std::string &val)
@@ -90,6 +46,19 @@ namespace server::services
             auto rng = res.headers.equal_range(key);
             res.headers.erase(rng.first, rng.second);
             res.set_header(key, val);
+        }
+
+        bool p2pPeerTransferEnabled()
+        {
+            if (const char *v = std::getenv("TRANSFERA_ENABLE_P2P"); v && *v)
+            {
+                if (v[0] == '0' && v[1] == '\0')
+                    return false;
+                if (std::strcmp(v, "false") == 0 || std::strcmp(v, "FALSE") == 0)
+                    return false;
+                return true;
+            }
+            return false;
         }
 
     } // namespace
@@ -356,9 +325,14 @@ namespace server::services
                                   " bytes=" + std::to_string(uploaded.content.size()));
             }
 
-            std::thread([this, port]()
-                        { fileSharer_.startFileServer(port); })
-                .detach();
+            if (p2pPeerTransferEnabled())
+            {
+                std::thread([this, port]()
+                            { fileSharer_.startFileServer(port); })
+                    .detach();
+                if (server::log::verboseEnabled())
+                    server::log::info("P2P peer listener started on port " + std::to_string(port));
+            }
 
             const std::string jsonResponse = "{\"port\": " + std::to_string(port) + "}";
             res.status = 200;
@@ -409,85 +383,48 @@ namespace server::services
 
         try
         {
+            service::SharedFile shared;
+            if (!fileSharer_.tryGetSharedFile(peerPort, shared))
+            {
+                res.status = 404;
+                res.set_content("Not Found: invalid or expired invite code", "text/plain");
+                return;
+            }
+
+            if (!fs::exists(shared.path) || !fs::is_regular_file(shared.path))
+            {
+                res.status = 404;
+                res.set_content("Not Found: file no longer on server", "text/plain");
+                return;
+            }
+
             if (server::log::verboseEnabled())
-                server::log::info("download request peer_port=" + std::to_string(peerPort));
-
-            const int sock = ::socket(AF_INET, SOCK_STREAM, 0);
-            if (sock < 0)
-                throw std::runtime_error("socket() failed");
-
-            sockaddr_in addr{};
-            addr.sin_family = AF_INET;
-            addr.sin_port = htons(static_cast<uint16_t>(peerPort));
-            if (::inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr) != 1)
             {
-                ::close(sock);
-                throw std::runtime_error("inet_pton failed");
+                server::log::info("download invite_port=" + std::to_string(peerPort) +
+                                  " path=" + shared.path + " name=" + shared.downloadName);
             }
 
-            if (::connect(sock, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) < 0)
-            {
-                ::close(sock);
-                throw std::runtime_error(std::strerror(errno));
-            }
-
-            std::string filename = "downloaded-file";
-            std::string lookupName;
-            if (fileSharer_.tryGetDownloadName(peerPort, lookupName))
-                filename = lookupName;
-
-            std::string header;
-            if (!recvLine(sock, header))
-            {
-                ::close(sock);
-                throw std::runtime_error("failed to read filename header");
-            }
-            if (!header.empty() && header.back() == '\r')
-                header.pop_back();
-
-            const std::string prefix = "Filename: ";
-            if (header.rfind(prefix, 0) == 0)
-            {
-                const std::string fromPeer = header.substr(prefix.size());
-                if (!fromPeer.empty())
-                    filename = fromPeer;
-            }
-
-            const fs::path tempFile =
-                fs::temp_directory_path() / ("download-" + randomHex(8) + ".tmp");
-
-            if (!recvAllToFile(sock, tempFile))
-            {
-                ::close(sock);
-                std::error_code ec;
-                fs::remove(tempFile, ec);
-                throw std::runtime_error("failed while reading peer stream");
-            }
-            ::close(sock);
-
-            std::ifstream fis(tempFile, std::ios::binary);
+            std::ifstream fis(shared.path, std::ios::binary);
             if (!fis)
-            {
-                std::error_code ec;
-                fs::remove(tempFile, ec);
-                throw std::runtime_error("failed to open temp file");
-            }
+                throw std::runtime_error("failed to open uploaded file");
 
             std::ostringstream buffer;
             buffer << fis.rdbuf();
+            if (!fis && !fis.eof())
+                throw std::runtime_error("failed while reading uploaded file");
+
+            const std::string &filename =
+                shared.downloadName.empty() ? "downloaded-file" : shared.downloadName;
 
             res.status = 200;
-            res.set_header("Content-Disposition",
-                           "attachment; filename=\"" + filename + "\"");
-            res.set_header("X-Filename", filename);
+            setHeaderOnce(res, "Content-Disposition",
+                          "attachment; filename=\"" + filename + "\"");
+            setHeaderOnce(res, "X-Filename", filename);
             res.set_content(buffer.str(), "application/octet-stream");
-
-            std::error_code ec;
-            fs::remove(tempFile, ec);
         }
         catch (const std::exception &e)
         {
-            server::log::error(std::string("Error downloading file from peer: ") + e.what());
+            server::log::error(std::string("Error downloading file: ") + e.what());
             res.status = 500;
             res.set_content(std::string("Error downloading file: ") + e.what(), "text/plain");
         }

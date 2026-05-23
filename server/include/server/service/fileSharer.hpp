@@ -21,6 +21,8 @@ namespace server::service
         void startFileServer(int port);
 
         bool tryGetDownloadName(int port, std::string &outName) const;
+        /** Lookup invite port → stored file (for HTTP download without localhost P2P). */
+        bool tryGetSharedFile(int port, SharedFile &outFile) const;
 
     private:
         std::unordered_map<int, SharedFile> available_files_;
