@@ -4,7 +4,6 @@
 
 #include <chrono>
 #include <cstdlib>
-#include <cstring>
 #include <iostream>
 #include <fstream>
 #include <random>
@@ -46,19 +45,6 @@ namespace server::services
             auto rng = res.headers.equal_range(key);
             res.headers.erase(rng.first, rng.second);
             res.set_header(key, val);
-        }
-
-        bool p2pPeerTransferEnabled()
-        {
-            if (const char *v = std::getenv("TRANSFERA_ENABLE_P2P"); v && *v)
-            {
-                if (v[0] == '0' && v[1] == '\0')
-                    return false;
-                if (std::strcmp(v, "false") == 0 || std::strcmp(v, "FALSE") == 0)
-                    return false;
-                return true;
-            }
-            return false;
         }
 
     } // namespace
@@ -325,14 +311,7 @@ namespace server::services
                                   " bytes=" + std::to_string(uploaded.content.size()));
             }
 
-            if (p2pPeerTransferEnabled())
-            {
-                std::thread([this, port]()
-                            { fileSharer_.startFileServer(port); })
-                    .detach();
-                if (server::log::verboseEnabled())
-                    server::log::info("P2P peer listener started on port " + std::to_string(port));
-            }
+            // P2P listener starts on download (coordinated), not on upload — avoids accept-slot races.
 
             const std::string jsonResponse = "{\"port\": " + std::to_string(port) + "}";
             res.status = 200;
@@ -383,48 +362,38 @@ namespace server::services
 
         try
         {
-            service::SharedFile shared;
-            if (!fileSharer_.tryGetSharedFile(peerPort, shared))
-            {
-                res.status = 404;
-                res.set_content("Not Found: invalid or expired invite code", "text/plain");
-                return;
-            }
-
-            if (!fs::exists(shared.path) || !fs::is_regular_file(shared.path))
-            {
-                res.status = 404;
-                res.set_content("Not Found: file no longer on server", "text/plain");
-                return;
-            }
-
             if (server::log::verboseEnabled())
+                server::log::info("download request invite_port=" + std::to_string(peerPort));
+
+            std::string filename;
+            std::string body;
+            std::string p2pError;
+            if (!fileSharer_.receiveViaLocalP2P(peerPort, filename, body, p2pError))
             {
-                server::log::info("download invite_port=" + std::to_string(peerPort) +
-                                  " path=" + shared.path + " name=" + shared.downloadName);
+                if (p2pError.find("invalid") != std::string::npos ||
+                    p2pError.find("no longer") != std::string::npos)
+                {
+                    res.status = 404;
+                    res.set_content(std::string("Not Found: ") + p2pError, "text/plain");
+                }
+                else
+                {
+                    res.status = 500;
+                    res.set_content(std::string("Error downloading file: ") + p2pError,
+                                    "text/plain");
+                }
+                return;
             }
-
-            std::ifstream fis(shared.path, std::ios::binary);
-            if (!fis)
-                throw std::runtime_error("failed to open uploaded file");
-
-            std::ostringstream buffer;
-            buffer << fis.rdbuf();
-            if (!fis && !fis.eof())
-                throw std::runtime_error("failed while reading uploaded file");
-
-            const std::string &filename =
-                shared.downloadName.empty() ? "downloaded-file" : shared.downloadName;
 
             res.status = 200;
             setHeaderOnce(res, "Content-Disposition",
                           "attachment; filename=\"" + filename + "\"");
             setHeaderOnce(res, "X-Filename", filename);
-            res.set_content(buffer.str(), "application/octet-stream");
+            res.set_content(body, "application/octet-stream");
         }
         catch (const std::exception &e)
         {
-            server::log::error(std::string("Error downloading file: ") + e.what());
+            server::log::error(std::string("Error downloading file from peer: ") + e.what());
             res.status = 500;
             res.set_content(std::string("Error downloading file: ") + e.what(), "text/plain");
         }
