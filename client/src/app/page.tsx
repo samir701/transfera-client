@@ -92,7 +92,12 @@ export default function Home() {
       link.remove();
     } catch (error) {
       console.error('Error downloading file:', error);
-      alert('Failed to download file. Please check the invite code and try again.');
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        alert('This invite code was already used or is no longer valid.');
+      } else {
+        alert('Failed to download file. Please check the invite code and try again.');
+      }
+      throw error;
     } finally {
       setIsDownloading(false);
     }

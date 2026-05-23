@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Upload once, download twice — validates coordinated P2P (no upload-time listener race).
+# Upload once, download once (invite burned), second download must 404.
 set -euo pipefail
 
 API="${API:-http://127.0.0.1:8080}"
@@ -40,16 +40,14 @@ OUT2="$(mktemp)"
 trap 'rm -f "$FIXTURE" "$OUT1" "$OUT2"' EXIT
 
 echo "==> download #1 (invite_port=$PORT)"
-curl -sf "$API/api/download/$PORT" -o "$OUT1"
-echo "bytes: $(wc -c <"$OUT1" | tr -d ' ')"
+HTTP1="$(curl -s -o "$OUT1" -w "%{http_code}" "$API/api/download/$PORT")"
+echo "http=$HTTP1 bytes: $(wc -c <"$OUT1" | tr -d ' ')"
+[[ "$HTTP1" == "200" ]] || { cat "$OUT1" >&2; exit 1; }
 
-echo "==> download #2 (same invite — repeat P2P)"
+echo "==> download #2 (same invite — must fail, one-time link)"
 HTTP2="$(curl -s -o "$OUT2" -w "%{http_code}" "$API/api/download/$PORT")"
-echo "http=$HTTP2 bytes: $(wc -c <"$OUT2" | tr -d ' ')"
-if [[ "$HTTP2" != "200" ]]; then
-  echo "response: $(head -c 200 "$OUT2")" >&2
-  exit 1
-fi
+echo "http=$HTTP2 body: $(head -c 120 "$OUT2")"
+[[ "$HTTP2" == "404" ]] || exit 1
 
-cmp -s "$FIXTURE" "$OUT1" && cmp -s "$FIXTURE" "$OUT2"
-echo "OK: both downloads match upload ($(wc -c <"$FIXTURE" | tr -d ' ') bytes)"
+cmp -s "$FIXTURE" "$OUT1"
+echo "OK: first download OK; second correctly rejected (one-time invite)"

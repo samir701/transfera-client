@@ -26,7 +26,7 @@ export default function FileDownload({ onDownload, isDownloading }: FileDownload
       await onDownload(port);
     } catch (err) {
       console.error(err);
-      setError('Failed to download the file. Please check the invite code and try again.');
+      setError('Download failed. The invite may already have been used or is invalid.');
     }
   };
 
@@ -35,7 +35,7 @@ export default function FileDownload({ onDownload, isDownloading }: FileDownload
       <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
         <h3 className="text-lg font-medium text-blue-800 mb-2">Receive a File</h3>
         <p className="text-sm text-blue-600 mb-0">
-          Enter the invite code shared with you to download the file.
+          Enter the invite code shared with you. Each code works for one download only.
         </p>
       </div>
 

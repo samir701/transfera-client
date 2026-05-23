@@ -2,7 +2,7 @@
 # Run on the Linode VM to see why http://IP/ or :3000/:8080 fail.
 set -euo pipefail
 
-ENV_FILE=/etc/transfera/env
+ENV_FILE=/etc/peerlink/env
 if [[ -f "$ENV_FILE" ]]; then
   # shellcheck disable=SC1091
   source "$ENV_FILE"
@@ -12,19 +12,19 @@ IP="${LINODE_IP:-$(curl -4 -s --connect-timeout 2 ifconfig.me || hostname -I | a
 API_PORT="${API_PORT:-8080}"
 CLIENT_PORT="${CLIENT_PORT:-80}"
 
-echo "=== Transfera diagnose (this host) ==="
+echo "=== PeerLink diagnose (this host) ==="
 echo "Public IP guess: $IP"
 echo "API_PORT=$API_PORT  CLIENT_PORT=$CLIENT_PORT"
 echo
 
 echo "--- systemd ---"
-systemctl is-active transfera-api 2>/dev/null || echo "transfera-api: not active"
-systemctl is-active transfera-client 2>/dev/null || echo "transfera-client: not active"
+systemctl is-active peerlink-api 2>/dev/null || echo "peerlink-api: not active"
+systemctl is-active peerlink-client 2>/dev/null || echo "peerlink-client: not active"
 echo
 
 echo "--- listening ports ---"
 ss -tlnp | grep -E ":${API_PORT}|:${CLIENT_PORT}|:3000|:80 |serve|node" || echo "(no listeners on 80/3000/8080)"
-echo "(transfera-client must log: Accepting connections at http://0.0.0.0:PORT — not localhost:RANDOM)"
+echo "(peerlink-client must log: Accepting connections at http://0.0.0.0:PORT — not localhost:RANDOM)"
 echo
 
 echo "--- local API ---"
@@ -37,7 +37,7 @@ echo "${CODE:-FAIL: UI not responding on 127.0.0.1:${CLIENT_PORT}}"
 echo
 
 echo "--- UI files ---"
-OUT=/opt/transfera-client/client/out/index.html
+OUT=/opt/p2p_file_sharer_in_cpp/client/out/index.html
 [[ -f "$OUT" ]] && echo "OK: $OUT" || echo "MISSING: $OUT — run ./deploy/linode/build-ui.sh $IP"
 echo
 

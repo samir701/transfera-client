@@ -53,7 +53,7 @@ namespace server::service
             return true;
         }
 
-        void fileSenderHandler(int client_fd, const std::string &file_path,
+        bool fileSenderHandler(int client_fd, const std::string &file_path,
                                const std::string &download_name)
         {
             server::log::info("P2P send: opening " + file_path);
@@ -62,7 +62,7 @@ namespace server::service
             {
                 server::log::error("P2P send: failed to open '" + file_path + "'");
                 ::close(client_fd);
-                return;
+                return false;
             }
 
             const std::string header = "Filename: " + download_name + "\n";
@@ -77,7 +77,7 @@ namespace server::service
                         server::log::error(std::string("P2P send: header failed: ") +
                                            std::strerror(errno));
                         ::close(client_fd);
-                        return;
+                        return false;
                     }
                     p += static_cast<std::size_t>(sent);
                     remaining -= static_cast<std::size_t>(sent);
@@ -98,7 +98,7 @@ namespace server::service
                         server::log::error(std::string("P2P send: body failed: ") +
                                            std::strerror(errno));
                         ::close(client_fd);
-                        return;
+                        return false;
                     }
                     p += static_cast<std::size_t>(sent);
                     remaining -= static_cast<std::size_t>(sent);
@@ -108,6 +108,7 @@ namespace server::service
             server::log::info("P2P send: complete name='" + download_name +
                               "' bytes=" + std::to_string(total));
             ::close(client_fd);
+            return true;
         }
 
     } // namespace
@@ -141,6 +142,55 @@ namespace server::service
         return !outFile.path.empty();
     }
 
+    bool FileSharer::claimInviteForTransfer(int port, SharedFile &outFile, std::string &outError)
+    {
+        std::lock_guard lock(mapMutex_);
+        const auto it = available_files_.find(port);
+        if (it == available_files_.end())
+        {
+            outError = "invalid or expired invite code";
+            return false;
+        }
+        if (it->second.transferInProgress)
+        {
+            outError = "download already in progress";
+            return false;
+        }
+        it->second.transferInProgress = true;
+        outFile = it->second;
+        return true;
+    }
+
+    void FileSharer::releaseInviteClaim(int port)
+    {
+        std::lock_guard lock(mapMutex_);
+        const auto it = available_files_.find(port);
+        if (it != available_files_.end())
+            it->second.transferInProgress = false;
+    }
+
+    void FileSharer::consumeInvite(int port, const std::string &filePath)
+    {
+        {
+            std::lock_guard lock(mapMutex_);
+            available_files_.erase(port);
+            portTransferMutexes_.erase(port);
+        }
+
+        std::error_code ec;
+        std::filesystem::remove(filePath, ec);
+        if (ec && server::log::verboseEnabled())
+        {
+            server::log::info("P2P invite consumed invite_port=" + std::to_string(port) +
+                              " (file remove: " + ec.message() + ")");
+        }
+        else
+        {
+            server::log::info("P2P invite consumed invite_port=" + std::to_string(port) +
+                              " connection closed");
+        }
+    }
+
     int FileSharer::offerFile(const std::string &filePath, const std::string &downloadName)
     {
         std::lock_guard lock(mapMutex_);
@@ -164,25 +214,30 @@ namespace server::service
                                         std::string &outBody, std::string &outError)
     {
         SharedFile shared;
-        {
-            std::lock_guard lock(mapMutex_);
-            const auto it = available_files_.find(port);
-            if (it == available_files_.end())
-            {
-                outError = "invalid or expired invite code";
-                return false;
-            }
-            shared = it->second;
-        }
+        if (!claimInviteForTransfer(port, shared, outError))
+            return false;
 
         if (!std::filesystem::exists(shared.path) ||
             !std::filesystem::is_regular_file(shared.path))
         {
+            releaseInviteClaim(port);
             outError = "file no longer on server";
             return false;
         }
 
         std::lock_guard portLock(transferMutexForPort(port));
+
+        struct ClaimGuard
+        {
+            FileSharer &sharer;
+            int invitePort;
+            bool keep{false};
+            ~ClaimGuard()
+            {
+                if (!keep)
+                    sharer.releaseInviteClaim(invitePort);
+            }
+        } claimGuard{*this, port};
 
         server::log::info("P2P download start invite_port=" + std::to_string(port));
 
@@ -198,9 +253,10 @@ namespace server::service
 
         server::log::info("P2P channel ready invite_port=" + std::to_string(port));
 
+        bool sendOk = false;
         std::thread senderThread(
             [&]()
-            { fileSenderHandler(sendFd, shared.path, shared.downloadName); });
+            { sendOk = fileSenderHandler(sendFd, shared.path, shared.downloadName); });
 
         std::string filename =
             shared.downloadName.empty() ? "downloaded-file" : shared.downloadName;
@@ -241,7 +297,15 @@ namespace server::service
         if (senderThread.joinable())
             senderThread.join();
 
+        if (!sendOk)
+        {
+            outError = "P2P sender failed";
+            return false;
+        }
+
         outFilename = filename;
+        claimGuard.keep = true;
+        consumeInvite(port, shared.path);
         server::log::info("P2P download complete invite_port=" + std::to_string(port) +
                           " name=" + filename + " bytes=" + std::to_string(outBody.size()));
         return true;
@@ -250,15 +314,11 @@ namespace server::service
     void FileSharer::startFileServer(int port)
     {
         SharedFile shared;
+        std::string err;
+        if (!claimInviteForTransfer(port, shared, err))
         {
-            std::lock_guard lock(mapMutex_);
-            const auto it = available_files_.find(port);
-            if (it == available_files_.end())
-            {
-                server::log::error("No file associated with port: " + std::to_string(port));
-                return;
-            }
-            shared = it->second;
+            server::log::error("remote P2P port " + std::to_string(port) + ": " + err);
+            return;
         }
 
         const int server_fd = ::socket(AF_INET, SOCK_STREAM, 0);
@@ -277,6 +337,7 @@ namespace server::service
             ::listen(server_fd, 1) < 0)
         {
             ::close(server_fd);
+            releaseInviteClaim(port);
             server::log::error("remote P2P bind/listen failed port " + std::to_string(port));
             return;
         }
@@ -288,7 +349,14 @@ namespace server::service
             ::accept(server_fd, reinterpret_cast<sockaddr *>(&client_addr), &client_len);
         ::close(server_fd);
         if (client_fd >= 0)
-            fileSenderHandler(client_fd, shared.path, shared.downloadName);
+        {
+            if (fileSenderHandler(client_fd, shared.path, shared.downloadName))
+                consumeInvite(port, shared.path);
+            else
+                releaseInviteClaim(port);
+        }
+        else
+            releaseInviteClaim(port);
     }
 
 } // namespace server::service

@@ -12,7 +12,7 @@ The UI is built with `NEXT_PUBLIC_API_BASE_URL=https://transfera-api.onrender.co
 ## Setup
 
 ```bash
-cd /opt/transfera-client
+cd /opt/p2p_file_sharer_in_cpp
 git pull
 chmod +x deploy/linode/*.sh
 apt update && apt install -y git cmake g++ nodejs npm iptables

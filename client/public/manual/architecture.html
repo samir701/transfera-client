@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>System Architecture — Transfera Manual</title>
+  <title>System Architecture — PeerLink Manual</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/css/manual.css" />
 </head>
 <body>
   <div class="layout">
     <nav class="sidebar">
-      <div class="brand">Transfera Manual</div>
+      <div class="brand">PeerLink Manual</div>
       <div class="deploy-links">
         <strong>Deployed URLs</strong>
         <a id="deploy-app-link" href="#">Live app</a>
@@ -30,7 +30,7 @@
           <tr><td>API gateway</td><td>cpp-httplib</td><td>REST-like endpoints, CORS, multipart parsing</td></tr>
           <tr><td>Session / catalog</td><td><code>FileSharer::available_files_</code></td><td>Maps invite port → path + display name</td></tr>
           <tr><td>Data transfer</td><td>Berkeley sockets</td><td>One-shot TCP send per invite port</td></tr>
-          <tr><td>Storage</td><td>Filesystem</td><td><code>$TMPDIR/transfera-uploads/</code></td></tr>
+          <tr><td>Storage</td><td>Filesystem</td><td><code>$TMPDIR/peerlink-uploads/</code></td></tr>
         </tbody>
       </table>
 

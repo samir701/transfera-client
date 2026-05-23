@@ -371,7 +371,9 @@ namespace server::services
             if (!fileSharer_.receiveViaLocalP2P(peerPort, filename, body, p2pError))
             {
                 if (p2pError.find("invalid") != std::string::npos ||
-                    p2pError.find("no longer") != std::string::npos)
+                    p2pError.find("expired") != std::string::npos ||
+                    p2pError.find("no longer") != std::string::npos ||
+                    p2pError.find("already in progress") != std::string::npos)
                 {
                     res.status = 404;
                     res.set_content(std::string("Not Found: ") + p2pError, "text/plain");
