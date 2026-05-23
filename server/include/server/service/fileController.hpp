@@ -23,6 +23,7 @@ namespace server::services
 
     private:
         void registerRoutes();
+        void setupHttpLogging();
 
         // CORS helpers (CORSHandler)
         void applyCorsHeaders(httplib::Response &res) const;

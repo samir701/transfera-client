@@ -43,7 +43,11 @@ WORKDIR /app
 USER appuser
 
 
-# Ensure the app uses port 8008 inside the container to match runtime port mapping
+# Unbuffered / access logs for Docker & Render (disable with TRANSFERA_LOG_HTTP=0)
+ENV TRANSFERA_LOG_HTTP=1
+ENV TRANSFERA_LOG_VERBOSE=1
+
+# Render sets PORT; default for local docker run
 ENV PORT=8008
 EXPOSE 8008
 

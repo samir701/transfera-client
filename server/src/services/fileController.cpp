@@ -1,5 +1,7 @@
 #include "server/service/fileController.hpp"
 
+#include "server/logging.hpp"
+
 #include <chrono>
 #include <cstdlib>
 #include <iostream>
@@ -95,6 +97,7 @@ namespace server::services
         server_.set_write_timeout(120, 0);
 
         registerRoutes();
+        setupHttpLogging();
     }
 
     FileController::~FileController() { stop(); }
@@ -110,10 +113,12 @@ namespace server::services
                                     {
                                         if (!server_.bind_to_port("0.0.0.0", port_))
                                         {
-                                            std::cerr << "ERROR: Could not bind to port " << port_
-                                                      << " (is another server already running?)\n";
-                                            std::cerr << "  Fix: lsof -ti :" << port_
-                                                      << " | xargs kill -9\n";
+                                            server::log::error(
+                                                "Could not bind to port " + std::to_string(port_) +
+                                                " (is another server already running?)");
+                                            server::log::error("Fix: lsof -ti :" +
+                                                               std::to_string(port_) +
+                                                               " | xargs kill -9");
                                             running_ = false;
                                             return;
                                         }
@@ -121,8 +126,8 @@ namespace server::services
                                         listen_ok_ = true;
                                         if (!server_.listen_after_bind())
                                         {
-                                            std::cerr << "ERROR: API server stopped on port "
-                                                      << port_ << '\n';
+                                            server::log::error("API server stopped on port " +
+                                                               std::to_string(port_));
                                         }
                                         listen_ok_ = false;
                                         running_ = false; });
@@ -139,10 +144,12 @@ namespace server::services
             return false;
         }
 
-        std::cout << "Transfera API on http://0.0.0.0:" << port_ << '\n';
-        std::cout << "  GET  http://0.0.0.0:" << port_ << "/api/health\n";
-        std::cout << "  POST http://0.0.0.0:" << port_ << "/api/upload\n";
-        std::cout << "  GET  http://0.0.0.0:" << port_ << "/api/download/<port>\n";
+        server::log::info("Transfera API on http://0.0.0.0:" + std::to_string(port_));
+        server::log::info("  GET  http://0.0.0.0:" + std::to_string(port_) + "/api/health");
+        server::log::info("  POST http://0.0.0.0:" + std::to_string(port_) + "/api/upload");
+        server::log::info("  GET  http://0.0.0.0:" + std::to_string(port_) +
+                          "/api/download/<port>");
+        server::log::info("upload dir: " + uploadDir_.string());
         return true;
     }
 
@@ -158,7 +165,7 @@ namespace server::services
         server_.stop();
         if (serverThread_.joinable())
             serverThread_.join();
-        std::cout << "API server stopped\n";
+        server::log::info("API server stopped");
     }
 
     void FileController::registerRoutes()
@@ -193,6 +200,36 @@ namespace server::services
                                           handleCorsOrNotFound(req, res);
                                       else
                                           applyCorsHeaders(res); });
+    }
+
+    void FileController::setupHttpLogging()
+    {
+        if (!server::log::httpAccessEnabled())
+            return;
+
+        server_.set_logger([](const httplib::Request &req, const httplib::Response &res)
+                           {
+                               std::ostringstream oss;
+                               oss << req.method << ' ' << req.path << " -> " << res.status;
+                               if (server::log::verboseEnabled())
+                               {
+                                   if (!req.remote_addr.empty())
+                                       oss << " from=" << req.remote_addr;
+                                   const auto cl = req.get_header_value("Content-Length");
+                                   if (!cl.empty())
+                                       oss << " req_bytes=" << cl;
+                               }
+                               server::log::info(oss.str());
+                           });
+
+        server_.set_error_logger([](const httplib::Error err, const httplib::Request *req)
+                                   {
+                                       std::ostringstream oss;
+                                       oss << httplib::to_string(err);
+                                       if (req)
+                                           oss << ' ' << req->method << ' ' << req->path;
+                                       server::log::error(oss.str());
+                                   });
     }
 
     void FileController::applyCorsHeaders(httplib::Response &res) const
@@ -303,6 +340,13 @@ namespace server::services
 
             const int port = fileSharer_.offerFile(filePath.string(), displayName);
 
+            if (server::log::verboseEnabled())
+            {
+                server::log::info("upload saved: " + filePath.string() + " display=" +
+                                  displayName + " invite_port=" + std::to_string(port) +
+                                  " bytes=" + std::to_string(uploaded.content.size()));
+            }
+
             std::thread([this, port]()
                         { fileSharer_.startFileServer(port); })
                 .detach();
@@ -313,7 +357,7 @@ namespace server::services
         }
         catch (const std::exception &e)
         {
-            std::cerr << "Error processing file upload: " << e.what() << '\n';
+            server::log::error(std::string("Error processing file upload: ") + e.what());
             res.status = 500;
             res.set_content(std::string("Server error: ") + e.what(), "text/plain");
         }
@@ -356,6 +400,9 @@ namespace server::services
 
         try
         {
+            if (server::log::verboseEnabled())
+                server::log::info("download request peer_port=" + std::to_string(peerPort));
+
             const int sock = ::socket(AF_INET, SOCK_STREAM, 0);
             if (sock < 0)
                 throw std::runtime_error("socket() failed");
@@ -431,7 +478,7 @@ namespace server::services
         }
         catch (const std::exception &e)
         {
-            std::cerr << "Error downloading file from peer: " << e.what() << '\n';
+            server::log::error(std::string("Error downloading file from peer: ") + e.what());
             res.status = 500;
             res.set_content(std::string("Error downloading file: ") + e.what(), "text/plain");
         }

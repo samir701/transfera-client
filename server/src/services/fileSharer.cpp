@@ -1,4 +1,5 @@
 #include "server/service/fileSharer.hpp"
+#include "server/logging.hpp"
 #include "server/utils/uploadUtils.hpp"
 
 #include <arpa/inet.h>
@@ -18,11 +19,12 @@ namespace server::service
     // {
     void fileSenderHandler(int client_fd, std::string file_path, std::string download_name)
     {
-        std::cout << "Starting to send file: " << file_path << '\n';
+        server::log::info("Starting to send file: " + file_path);
         std::ifstream input(file_path, std::ios::binary);
         if (!input)
         {
-            std::cerr << "Error sending file to client: failed to open file '" << file_path << "'\n";
+            server::log::error("Error sending file to client: failed to open file '" + file_path +
+                               "'");
             ::close(client_fd);
             return;
         }
@@ -36,7 +38,8 @@ namespace server::service
                 const ssize_t sent = ::send(client_fd, p, remaining, 0);
                 if (sent <= 0)
                 {
-                    std::cerr << "Error sending file to client: " << std::strerror(errno) << '\n';
+                    server::log::error(std::string("Error sending file to client: ") +
+                                       std::strerror(errno));
                     ::close(client_fd);
                     return;
                 }
@@ -55,7 +58,8 @@ namespace server::service
                 const ssize_t sent = ::send(client_fd, p, remaining, 0);
                 if (sent <= 0)
                 {
-                    std::cerr << "Error sending file to client: " << std::strerror(errno) << '\n';
+                    server::log::error(std::string("Error sending file to client: ") +
+                                       std::strerror(errno));
                     ::close(client_fd);
                     return;
                 }
@@ -63,7 +67,7 @@ namespace server::service
                 remaining -= static_cast<std::size_t>(sent);
             }
         }
-        std::cout << "File '" << download_name << "' sent to client\n";
+        server::log::info("File '" + download_name + "' sent to client");
         ::close(client_fd);
     }
     // } // namespace
@@ -95,7 +99,7 @@ namespace server::service
         const auto it = available_files_.find(port);
         if (it == available_files_.end())
         {
-            std::cerr << "No file associated with port: " << port << '\n';
+            server::log::error("No file associated with port: " + std::to_string(port));
             return;
         }
         const SharedFile &shared = it->second;
@@ -105,8 +109,8 @@ namespace server::service
         const int server_fd = ::socket(AF_INET, SOCK_STREAM, 0);
         if (server_fd < 0)
         {
-            std::cerr << "Error starting file server on port " << port << ": "
-                      << std::strerror(errno) << '\n';
+            server::log::error("Error starting file server on port " + std::to_string(port) +
+                               ": " + std::strerror(errno));
             return;
         }
 
@@ -114,8 +118,8 @@ namespace server::service
         if (::setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) <
             0)
         {
-            std::cerr << "Error starting file server on port " << port << ": "
-                      << std::strerror(errno) << '\n';
+            server::log::error("Error starting file server on port " + std::to_string(port) +
+                               ": " + std::strerror(errno));
             ::close(server_fd);
             return;
         }
@@ -129,21 +133,22 @@ namespace server::service
             0)
         // reinterpret_cast is a C++ operator that allows you to convert one pointer type to another, even if they are unrelated. In this case, it is used to convert the pointer to sockaddr_in (which is a specific structure for IPv4 addresses) to a pointer to sockaddr (which is a more generic structure used in socket programming). This is necessary because the bind function expects a pointer to sockaddr, but we have a sockaddr_in structure that contains the necessary information for binding the socket.
         {
-            std::cerr << "Error starting file server on port " << port << ": "
-                      << std::strerror(errno) << '\n';
+            server::log::error("Error starting file server on port " + std::to_string(port) +
+                               ": " + std::strerror(errno));
             ::close(server_fd);
             return;
         }
 
         if (::listen(server_fd, 1) < 0)
         {
-            std::cerr << "Error starting file server on port " << port << ": "
-                      << std::strerror(errno) << '\n';
+            server::log::error("Error starting file server on port " + std::to_string(port) +
+                               ": " + std::strerror(errno));
             ::close(server_fd);
             return;
         }
 
-        std::cout << "Ready to serve file '" << downloadName << "' on port " << port << '\n';
+        server::log::info("Ready to serve file '" + downloadName + "' on port " +
+                          std::to_string(port));
 
         sockaddr_in client_addr{};
         socklen_t client_len = sizeof(client_addr);
@@ -151,8 +156,8 @@ namespace server::service
             ::accept(server_fd, reinterpret_cast<sockaddr *>(&client_addr), &client_len);
         if (client_fd < 0)
         {
-            std::cerr << "Failed to accept connection on port " << port << ": "
-                      << std::strerror(errno) << '\n';
+            server::log::error("Failed to accept connection on port " + std::to_string(port) +
+                               ": " + std::strerror(errno));
             ::close(server_fd);
             return;
         }
@@ -160,7 +165,7 @@ namespace server::service
         char client_ip[INET_ADDRSTRLEN]{};
         const char *ip = ::inet_ntop(AF_INET, &client_addr.sin_addr, client_ip,
                                      sizeof(client_ip));
-        std::cout << "Client connected: " << (ip ? ip : "?") << '\n';
+        server::log::info(std::string("Client connected: ") + (ip ? ip : "?"));
 
         std::thread sender(fileSenderHandler, client_fd, filePath, downloadName);
         sender.join();

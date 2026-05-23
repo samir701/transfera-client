@@ -1,5 +1,7 @@
 #include "server/service/fileController.hpp"
 
+#include "server/logging.hpp"
+
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
@@ -11,8 +13,9 @@ namespace
 {
     std::atomic<bool> g_keepRunning{true};
 
-    void onSignal(int)
+    void onSignal(int sig)
     {
+        server::log::info("received signal " + std::to_string(sig) + ", shutting down");
         g_keepRunning = false;
     }
 
@@ -30,7 +33,7 @@ namespace
             catch (...)
             {
             }
-            std::cerr << "Invalid PORT env, using default " << kDefaultPort << '\n';
+            server::log::error("Invalid PORT env, using default " + std::to_string(kDefaultPort));
         }
         return kDefaultPort;
     }
@@ -38,7 +41,10 @@ namespace
 
 int main()
 {
+    server::log::init();
+
     const int port = readPortFromEnv();
+    server::log::info("starting Transfera API PORT=" + std::to_string(port));
 
     std::signal(SIGINT, onSignal);
     std::signal(SIGTERM, onSignal);
@@ -46,7 +52,7 @@ int main()
     server::services::FileController controller(port);
     if (!controller.start())
     {
-        std::cerr << "Failed to start Transfera API on port " << port << '\n';
+        server::log::error("Failed to start Transfera API on port " + std::to_string(port));
         return 1;
     }
 
@@ -54,5 +60,6 @@ int main()
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
     controller.stop();
+    server::log::info("Transfera API exited cleanly");
     return 0;
 }
