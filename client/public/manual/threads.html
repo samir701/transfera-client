@@ -3,23 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Threads & Concurrency — PeerLink Manual</title>
+  <title>Threads & Concurrency — Transfera Manual</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/css/manual.css" />
 </head>
 <body>
   <div class="layout">
     <nav class="sidebar">
-      <div class="brand">PeerLink Manual</div>
+      <div class="brand">Transfera Manual</div>
       <div class="deploy-links">
         <a id="deploy-app-link" href="#">Live app</a>
         <a id="deploy-manual-link" href="#">This manual</a>
+        <a id="deploy-api-link" href="#">API health</a>
       </div>
       <ul id="manual-nav-list"></ul>
     </nav>
     <main class="content">
       <h1>Threads &amp; concurrency</h1>
-      <p class="lead">PeerLink uses <span class="tip" data-tip="std::thread launches an OS thread running a callable. C++20 thread support.">std::thread</span>,
+      <p class="lead">Transfera uses <span class="tip" data-tip="std::thread launches an OS thread running a callable. C++20 thread support.">std::thread</span>,
       <span class="tip" data-tip="detach(): thread of execution is not joinable; resources reclaimed at thread exit.">detach</span>,
       <span class="tip" data-tip="join(): blocks until thread completes; required for joinable threads before destruction.">join</span>, and
       <span class="tip" data-tip="std::atomic: lock-free or locked loads/stores for flags shared across threads.">std::atomic</span>.</p>

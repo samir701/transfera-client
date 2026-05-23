@@ -14,79 +14,82 @@
       <div class="deploy-links">
         <a id="deploy-app-link" href="#">Live app</a>
         <a id="deploy-manual-link" href="#">This manual</a>
+        <a id="deploy-api-link" href="#">API health</a>
       </div>
       <ul id="manual-nav-list"></ul>
     </nav>
     <main class="content">
       <h1>Frontend (Next.js)</h1>
-      <p class="lead">Static-export React app in <code>client/</code>. Talks to C++ API via cross-origin HTTP.</p>
+      <p class="lead">Static-export React app in <code>client/</code>. Production talks to Render over HTTPS; local dev uses <code>:8080</code>.</p>
 
-      <h2>1. Entry: <code>page.tsx</code></h2>
-      <pre><code>'use client';
-
-export default function Home() {
-  const [port, setPort] = useState&lt;number | null&gt;(null);
-  const [apiOnline, setApiOnline] = useState&lt;boolean | null&gt;(null);
-
-  useEffect(() => {
-    axios.get(apiUrl('/api/health'), { timeout: 3000 });
-  }, []);
-}</code></pre>
-      <span class="cite">client/src/app/page.tsx:1-38</span>
-      <p>
-        <span class="tip" data-tip="'use client' marks a Client Component in Next.js App Router — hooks and browser APIs allowed.">use client</span>
-        is required because the page uses <code>useState</code>, <code>useEffect</code>, and <code>axios</code> in the browser.
-      </p>
-
-      <h2>2. API base URL</h2>
-      <pre><code>export const API_BASE_URL =
+      <h2>1. API base URL</h2>
+      <pre><code>export const PRODUCTION_API_URL = 'https://transfera-api.onrender.com';
+export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '') ||
-  'https://transfera-api.onrender.com';</code></pre>
+  (process.env.NODE_ENV === 'production'
+    ? PRODUCTION_API_URL
+    : 'http://127.0.0.1:8080');</code></pre>
       <span class="cite">client/src/lib/api.ts</span>
-      <p>
-        Dev: Next on <code>:3000</code>, local API on <code>:8080</code> via <code>.env.local</code>.
-        Production (GitHub Pages): <code>https://transfera-api.onrender.com</code> on Render — HTTPS required for Pages.
-      </p>
 
-      <h2>3. Upload (critical detail)</h2>
-      <pre><code>const formData = new FormData();
-formData.append('file', file);
-const response = await axios.post(apiUrl('/api/upload'), formData);
-// NO manual Content-Type header</code></pre>
-      <span class="cite">client/src/app/page.tsx:45-49</span>
-      <div class="callout danger">
-        Never set <code>Content-Type: multipart/form-data</code> manually. The browser must add
-        <code>boundary=...</code>. Missing boundary breaks server parsing.
+      <h2>2. Upload validation (client-side)</h2>
+      <p>Enforced in <code>react-dropzone</code> and again before POST:</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Rule</th><th>Constant</th></tr></thead>
+          <tbody>
+            <tr><td>Max size 5 MB</td><td><code>MAX_UPLOAD_MB = 5</code></td></tr>
+            <tr><td>No video MIME <code>video/*</code></td><td><code>isVideoFile()</code></td></tr>
+            <tr><td>No video extensions</td><td>MP4, MOV, MKV, WebM, AVI, …</td></tr>
+          </tbody>
+        </table>
       </div>
+      <span class="cite">client/src/lib/uploadValidation.ts</span>
+      <span class="cite">client/src/components/FileUpload.tsx</span>
 
-      <h2>4. Download & filename</h2>
+      <h2>3. Max downloads control</h2>
+      <p>
+        On the <strong>Share a File</strong> tab, <strong>Max downloads (P2P)</strong> sits at the
+        right end of the tab row (flex layout). Default <code>1</code>, range <code>1–100</code>.
+      </p>
+      <pre><code>formData.append('file', file);
+formData.append('maxDownloads', String(allowedDownloads));
+await axios.post(apiUrl('/api/upload'), formData);</code></pre>
+      <span class="cite">client/src/app/page.tsx</span>
+      <span class="cite">client/src/lib/uploadLimits.ts</span>
+
+      <h2>4. Upload response</h2>
+      <pre><code>{ "port": 58341, "maxDownloads": 3 }</code></pre>
+      <p>UI stores both for <code>InviteCode</code> display.</p>
+
+      <h2>5. Download</h2>
       <pre><code>const response = await axios.get(apiUrl(`/api/download/${port}`), {
   responseType: 'blob',
 });
 const filename = resolveDownloadFilename(response.headers);</code></pre>
-      <span class="cite">client/src/app/page.tsx:74-78</span>
       <p>
-        <code>responseType: 'blob'</code> keeps binary data out of UTF-8 string corruption.
-        <code>Access-Control-Expose-Headers</code> on the server lets JS read <code>Content-Disposition</code> / <code>X-Filename</code>.
+        <code>404</code> → “invite already used or invalid”. Server may send
+        <code>X-Downloads-Remaining</code> (exposed via CORS).
       </p>
-      <span class="cite">server/src/services/fileController.cpp:207-209</span>
+      <span class="cite">client/src/lib/downloadFilename.ts</span>
 
-      <h2>5. Components</h2>
-      <table>
-        <thead><tr><th>File</th><th>Purpose</th></tr></thead>
-        <tbody>
-          <tr><td><code>FileUpload.tsx</code></td><td>react-dropzone → calls <code>onFileUpload(file)</code></td></tr>
-          <tr><td><code>InviteCode.tsx</code></td><td>Displays numeric invite port after upload</td></tr>
-          <tr><td><code>FileDownload.tsx</code></td><td>User enters port → triggers download</td></tr>
-        </tbody>
-      </table>
+      <h2>6. Components</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>File</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>FileUpload.tsx</code></td><td>Dropzone + validation errors</td></tr>
+            <tr><td><code>InviteCode.tsx</code></td><td>Invite port + max download hint</td></tr>
+            <tr><td><code>FileDownload.tsx</code></td><td>Enter code → download</td></tr>
+          </tbody>
+        </table>
+      </div>
 
-      <h2>6. GitHub Pages build</h2>
+      <h2>7. GitHub Pages build</h2>
       <p>
-        <code>next.config.js</code> sets <code>output: 'export'</code> and <code>basePath: '/p2p_file_sharer_in_cpp'</code> in production.
-        Manual pages live under <code>client/public/manual/</code> → copied to <code>out/manual/</code> on build.
+        <code>basePath: '/transfera-client'</code> in production.
+        Manual: <code>client/public/manual/</code> → <code>out/manual/</code>.
       </p>
-      <span class="cite">client/next.config.js:5-11</span>
+      <span class="cite">client/next.config.js</span>
     </main>
   </div>
   <script src="assets/js/manual.js"></script>

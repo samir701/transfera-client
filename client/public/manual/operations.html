@@ -14,70 +14,72 @@
       <div class="deploy-links">
         <a id="deploy-app-link" href="#">Live app</a>
         <a id="deploy-manual-link" href="#">This manual</a>
+        <a id="deploy-api-link" href="#">API health</a>
       </div>
       <ul id="manual-nav-list"></ul>
     </nav>
     <main class="content">
       <h1>Operations &amp; troubleshooting</h1>
 
-      <h2>1. Start / stop server</h2>
+      <h2>1. Local development</h2>
+      <pre><code>cd server && ./scripts/run.sh
+cd client && cp .env.local.example .env.local && npm install && npm run dev
+curl http://127.0.0.1:8080/api/health</code></pre>
+
+      <h2>2. P2P / quota tests</h2>
       <pre><code>cd server
-./scripts/run.sh          # recommended: frees port 8080 first
-# or: ./build/server
+./scripts/test-p2p-local.sh              # maxDownloads=1
+MAX_DOWNLOADS=3 ./scripts/test-p2p-local.sh</code></pre>
+      <span class="cite">Kills stale :8080 listeners before test when KILL_STALE=1</span>
 
-# stop: Ctrl+C in terminal (SIGINT → g_keepRunning=false → controller.stop())
+      <h2>3. Docker (Render image)</h2>
+      <pre><code>cd server
+./scripts/docker-run.sh
+# or: docker build -t transfera-api . && docker run -p 8080:8008 -e PORT=8008 transfera-api</code></pre>
+      <p>Logs: <code>TRANSFERA_LOG_HTTP=1</code>, <code>TRANSFERA_LOG_VERBOSE=1</code> (defaults in Dockerfile).</p>
 
-# force kill stale processes:
-lsof -ti :8080 | xargs kill -9</code></pre>
-      <span class="cite">server/scripts/run.sh</span>
-      <span class="cite">server/src/main_runner.cpp:53-56</span>
-
-      <h2>2. Where the server is spawned</h2>
-      <p>Not spawned as a child by Next.js. You run <code>./build/server</code> as its own process. The browser only makes HTTP requests to it.</p>
-
-      <h2>3. How the server is killed</h2>
-      <table>
-        <thead><tr><th>Mechanism</th><th>What happens</th></tr></thead>
-        <tbody>
-          <tr><td>Ctrl+C (SIGINT)</td><td><code>onSignal</code> → loop exits → <code>controller.stop()</code></td></tr>
-          <tr><td><code>kill &lt;pid&gt;</code> (SIGTERM)</td><td>Same as SIGINT path if handler runs</td></tr>
-          <tr><td><code>kill -9</code></td><td>Immediate termination; no graceful stop; OS closes all FDs</td></tr>
-          <tr><td>Destructor</td><td><code>~FileController()</code> calls <code>stop()</code></td></tr>
-        </tbody>
-      </table>
-
-      <h2>4. Multiple servers on port 8080</h2>
+      <h2>4. Multiple servers on :8080</h2>
       <div class="callout danger">
-        Symptom: uploads hang, health times out, UI says API offline.<br/>
-        Cause: several <code>server</code> processes bound or half-dead on :8080.<br/>
-        Fix: <code>lsof -ti :8080 | xargs kill -9</code> then single <code>./scripts/run.sh</code>.
+        Symptom: random 500s, “Connection refused”, or second download fails.<br/>
+        Cause: several <code>server</code> binaries on the same port.<br/>
+        Fix: <code>lsof -ti :8080 | xargs kill -9</code> then one <code>./scripts/run.sh</code>.
       </div>
 
-      <h2>5. GitHub Pages deployment</h2>
-      <p>Workflow: <code>.github/workflows/client_deploy.yml</code> builds <code>client/</code> and deploys <code>client/out</code>.</p>
-      <table>
-        <thead><tr><th>Asset</th><th>URL</th></tr></thead>
-        <tbody>
-          <tr><td>Next.js app</td><td><a href="https://dasanik2001.github.io/p2p_file_sharer_in_cpp/">https://dasanik2001.github.io/p2p_file_sharer_in_cpp/</a></td></tr>
-          <tr><td>This manual</td><td><a href="https://dasanik2001.github.io/p2p_file_sharer_in_cpp/manual/">https://dasanik2001.github.io/p2p_file_sharer_in_cpp/manual/</a></td></tr>
-        </tbody>
-      </table>
-      <p>Manual files live in <code>client/public/manual/</code> and copy to <code>out/manual/</code> on <code>npm run build</code>.</p>
-      <p><strong>Note:</strong> GitHub Pages hosts static files only — production API: <code>https://transfera-api.onrender.com</code> (Render). Local dev: <code>127.0.0.1:8080</code>.</p>
+      <h2>5. Production URLs</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Asset</th><th>URL</th></tr></thead>
+          <tbody>
+            <tr><td>App</td><td><a href="https://dasanik2001.github.io/transfera-client/">https://dasanik2001.github.io/transfera-client/</a></td></tr>
+            <tr><td>API</td><td><a href="https://transfera-api.onrender.com/api/health">https://transfera-api.onrender.com</a></td></tr>
+            <tr><td>Manual</td><td><a href="https://dasanik2001.github.io/transfera-client/manual/">…/manual/</a> (mobile-friendly nav)</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Deploy: push <code>client/</code> → GitHub Actions “Client Deploy”. API: Render auto-deploy from <code>server/</code> Docker.</p>
+      <span class="cite">docs/render-deploy.md</span>
 
-      <h2>6. Deploy manual updates</h2>
-      <pre><code>git add client/public/manual
-git commit -m "docs: update Transfera manual"
-git push origin main
-# Wait for "Client Deploy" GitHub Action to finish</code></pre>
-
-      <h2>7. Health checklist</h2>
+      <h2>6. Health checklist</h2>
       <ol>
-        <li><code>curl http://127.0.0.1:8080/api/health</code> → <code>{"status":"ok"}</code></li>
-        <li>UI shows green “API connected”</li>
-        <li>Upload returns JSON with numeric <code>port</code></li>
-        <li>Download with that port saves file with correct extension</li>
+        <li><code>curl …/api/health</code> → <code>{"status":"ok"}</code></li>
+        <li>UI: green “API connected”</li>
+        <li>Upload → <code>port</code> + <code>maxDownloads</code> in JSON</li>
+        <li>Download works; repeat until <code>404</code> when quota exhausted</li>
+        <li>Video / &gt;5 MB rejected in browser before upload</li>
       </ol>
+
+      <h2>7. Common errors</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Symptom</th><th>Likely cause</th></tr></thead>
+          <tbody>
+            <tr><td>CORS duplicate header</td><td>Fixed: single <code>Access-Control-Allow-Origin</code> per response</td></tr>
+            <tr><td>404 on download</td><td>Invite used up, cold start, or wrong instance</td></tr>
+            <tr><td>500 Connection refused</td><td>Stale multi-server on :8080 (local)</td></tr>
+            <tr><td>Docker build fail <code>unique_ptr</code></td><td>Need <code>#include &lt;memory&gt;</code> in fileSharer.hpp</td></tr>
+          </tbody>
+        </table>
+      </div>
     </main>
   </div>
   <script src="assets/js/manual.js"></script>

@@ -3,17 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sockets & File Descriptors — PeerLink Manual</title>
+  <title>Sockets & File Descriptors — Transfera Manual</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/css/manual.css" />
 </head>
 <body>
   <div class="layout">
     <nav class="sidebar">
-      <div class="brand">PeerLink Manual</div>
+      <div class="brand">Transfera Manual</div>
       <div class="deploy-links">
         <a id="deploy-app-link" href="#">Live app</a>
         <a id="deploy-manual-link" href="#">This manual</a>
+        <a id="deploy-api-link" href="#">API health</a>
       </div>
       <ul id="manual-nav-list"></ul>
     </nav>
@@ -21,7 +22,7 @@
       <h1>Sockets &amp; file descriptors</h1>
       <p class="lead">In Unix, a <span class="tip" data-tip="File descriptor (FD): small integer handle for an open I/O object (file, socket, pipe).">file descriptor</span> is an integer handle. Sockets are FDs; so are open files.</p>
 
-      <h2>1. FD lifecycle in PeerLink</h2>
+      <h2>1. FD lifecycle in Transfera</h2>
       <table>
         <thead><tr><th>FD variable</th><th>Created by</th><th>Represents</th><th>Closed by</th></tr></thead>
         <tbody>

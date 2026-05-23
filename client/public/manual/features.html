@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Product Features — Transfera Manual</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/css/manual.css" />
+</head>
+<body>
+  <div class="layout">
+    <nav class="sidebar">
+      <div class="brand">Transfera Manual</div>
+      <div class="deploy-links">
+        <strong>Deployed URLs</strong>
+        <a id="deploy-app-link" href="#" target="_blank" rel="noopener">Live app (GitHub Pages)</a>
+        <a id="deploy-manual-link" href="#" target="_blank" rel="noopener">This manual</a>
+        <a id="deploy-api-link" href="#" target="_blank" rel="noopener">API health (Render)</a>
+      </div>
+      <ul id="manual-nav-list"></ul>
+    </nav>
+    <main class="content">
+      <h1>Product features</h1>
+      <p class="lead">
+        Current behavior of <strong>Transfera</strong> (UI + C++ API) as of the latest release.
+        This page is the operator-facing summary; other chapters explain implementation detail.
+      </p>
+
+      <div class="feature-grid">
+        <article class="feature-card">
+          <h3>P2P download path</h3>
+          <p>
+            Each download runs the P2P wire protocol (<code>Filename:</code> header + binary stream)
+            over a coordinated <code>socketpair</code> inside the API process. No TCP listener is started on upload.
+          </p>
+        </article>
+        <article class="feature-card">
+          <h3>Max downloads (N)</h3>
+          <p>
+            Uploader sets how many successful downloads are allowed (default <strong>1</strong>, range 1–100).
+            After the Nth success the invite is removed and the temp file is deleted.
+          </p>
+        </article>
+        <article class="feature-card">
+          <h3>Upload limits</h3>
+          <p>
+            Frontend enforces <strong>5 MB</strong> max size and blocks <strong>video</strong> files
+            (MIME <code>video/*</code> and common extensions such as MP4, MOV, WebM).
+          </p>
+        </article>
+        <article class="feature-card">
+          <h3>Invite code</h3>
+          <p>
+            A random port number in 49152–65534 is the shareable invite code. It is only a lookup key;
+            the actual P2P channel uses an ephemeral socket pair per download request.
+          </p>
+        </article>
+        <article class="feature-card">
+          <h3>Production hosting</h3>
+          <p>
+            UI on GitHub Pages, API on Render (Docker). HTTPS API URL is baked into the static client build.
+          </p>
+        </article>
+        <article class="feature-card">
+          <h3>Observability</h3>
+          <p>
+            Structured <code>[INFO]</code> / <code>[ERROR]</code> logs to stdout; optional HTTP access log
+            via <code>TRANSFERA_LOG_HTTP</code> and verbose P2P lines via <code>TRANSFERA_LOG_VERBOSE</code>.
+          </p>
+        </article>
+      </div>
+
+      <h2>1. Upload (Share a File)</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Rule</th><th>Where</th><th>Detail</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Max file size</td>
+              <td>Browser (dropzone)</td>
+              <td>5 MB — <code>client/src/lib/uploadValidation.ts</code></td>
+            </tr>
+            <tr>
+              <td>No videos</td>
+              <td>Browser</td>
+              <td>Rejected by MIME and extension (MP4, MOV, MKV, WebM, …)</td>
+            </tr>
+            <tr>
+              <td>Max downloads</td>
+              <td>UI tab row + multipart</td>
+              <td>Field <code>maxDownloads</code>, default 1, sent with <code>file</code></td>
+            </tr>
+            <tr>
+              <td>Storage</td>
+              <td>API server</td>
+              <td><code>$TMPDIR/transfera-uploads/{hash}_{name}</code></td>
+            </tr>
+            <tr>
+              <td>Response</td>
+              <td>API</td>
+              <td><code>{"port": &lt;invite&gt;, "maxDownloads": N}</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>2. Download (Receive a File)</h2>
+      <ol>
+        <li>User enters invite code → <code>GET /api/download/{port}</code></li>
+        <li>API claims invite (rejects if expired, exhausted, or transfer in progress)</li>
+        <li>P2P transfer via <code>receiveViaLocalP2P</code> (socketpair + sender thread)</li>
+        <li>On success: increment download count; if count ≥ maxDownloads → remove invite + delete file</li>
+        <li>HTTP response: attachment body + <code>X-Downloads-Remaining</code> header</li>
+      </ol>
+
+      <div class="callout ok">
+        <strong>Failed downloads</strong> do not consume a slot — the invite stays valid until N successful transfers.
+        Concurrent downloads on the same invite return <code>404</code> with “download already in progress”.
+      </div>
+
+      <h2>3. API reference (client-facing)</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Method</th><th>Path</th><th>Body / params</th><th>Response</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>GET</td>
+              <td><code>/api/health</code></td>
+              <td>—</td>
+              <td><code>{"status":"ok"}</code></td>
+            </tr>
+            <tr>
+              <td>POST</td>
+              <td><code>/api/upload</code></td>
+              <td>multipart: <code>file</code>, optional <code>maxDownloads</code> (1–100)</td>
+              <td><code>port</code>, <code>maxDownloads</code></td>
+            </tr>
+            <tr>
+              <td>GET</td>
+              <td><code>/api/download/:port</code></td>
+              <td>invite code in path</td>
+              <td>file bytes; headers <code>Content-Disposition</code>, <code>X-Filename</code>, <code>X-Downloads-Remaining</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>4. UI layout (upload tab)</h2>
+      <ul>
+        <li>Tabs: <strong>Share a File</strong> | <strong>Receive a File</strong></li>
+        <li><strong>Max downloads (P2P)</strong> control on the right of the tab row (visible on Share only)</li>
+        <li>Drag-and-drop zone with hint: “Max 5 MB · no video files”</li>
+        <li>Green invite card after upload with code and download limit text</li>
+      </ul>
+
+      <h2>5. Deployment URLs</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Service</th><th>URL</th></tr></thead>
+          <tbody>
+            <tr><td>Web app</td><td><a href="https://dasanik2001.github.io/transfera-client/">https://dasanik2001.github.io/transfera-client/</a></td></tr>
+            <tr><td>API</td><td><a href="https://transfera-api.onrender.com/api/health">https://transfera-api.onrender.com</a></td></tr>
+            <tr><td>Manual</td><td><a href="https://dasanik2001.github.io/transfera-client/manual/">…/transfera-client/manual/</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2>6. Local verification</h2>
+      <pre><code>cd server && ./scripts/run.sh
+cd client && npm run dev
+
+# API-only P2P test (default maxDownloads=1)
+./scripts/test-p2p-local.sh
+MAX_DOWNLOADS=3 ./scripts/test-p2p-local.sh</code></pre>
+      <span class="cite">server/scripts/test-p2p-local.sh, test-p2p-download.sh</span>
+    </main>
+  </div>
+  <script src="assets/js/manual.js"></script>
+</body>
+</html>

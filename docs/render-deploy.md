@@ -80,8 +80,33 @@ npm run dev
 
 Start C++ API: `cd server && ./scripts/run.sh`
 
+## Product limits (enforced in UI)
+
+| Limit | Value | Where |
+|-------|-------|--------|
+| Max file size | **5 MB** | `client/src/lib/uploadValidation.ts` |
+| Video files | **Blocked** | MIME `video/*` + extensions (MP4, MOV, WebM, …) |
+| Max downloads per invite | **1–100** (default **1**) | Upload form field `maxDownloads` |
+
 ## Limits (Render free tier)
 
 - Service sleeps when idle (cold start ~30–60s)
 - Upload + download must hit the **same** Render instance (in-memory invite map + `/tmp` files)
-- Download uses **one-shot P2P** per invite (`socketpair` + stream); `maxDownloads` from upload (default 1) — invite removed after limit
+- Download uses **P2P** per request (`socketpair` + `Filename:` stream); `maxDownloads` from upload (default 1) — invite and file removed after N successful downloads
+- Failed downloads do not consume a download slot
+
+## API upload example
+
+```bash
+curl -F "file=@./small.bin;filename=doc.bin" \
+     -F "maxDownloads=3" \
+     https://transfera-api.onrender.com/api/upload
+```
+
+## Local P2P test
+
+```bash
+cd server
+./scripts/test-p2p-local.sh
+MAX_DOWNLOADS=3 ./scripts/test-p2p-local.sh
+```

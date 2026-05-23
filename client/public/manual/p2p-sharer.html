@@ -3,66 +3,67 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>P2P FileSharer — PeerLink Manual</title>
+  <title>P2P FileSharer — Transfera Manual</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono&family=IBM+Plex+Sans&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="assets/css/manual.css" />
 </head>
 <body>
   <div class="layout">
     <nav class="sidebar">
-      <div class="brand">PeerLink Manual</div>
+      <div class="brand">Transfera Manual</div>
       <div class="deploy-links">
         <a id="deploy-app-link" href="#">Live app</a>
         <a id="deploy-manual-link" href="#">This manual</a>
+        <a id="deploy-api-link" href="#">API health</a>
       </div>
       <ul id="manual-nav-list"></ul>
     </nav>
     <main class="content">
       <h1>P2P FileSharer</h1>
-      <p class="lead"><code>server::service::FileSharer</code> — one TCP server per shared file, single client, single transfer.</p>
+      <p class="lead"><code>server::service::FileSharer</code> — invite catalog, per-download P2P transfer, download quota.</p>
 
       <h2>1. SharedFile record</h2>
       <pre><code>struct SharedFile {
-    std::string path;         // absolute path on disk
-    std::string downloadName; // original basename for client
+    std::string path;
+    std::string downloadName;
+    int maxDownloads{1};
+    int downloadCount{0};
+    bool transferInProgress{false};
 };</code></pre>
-      <span class="cite">server/include/server/service/fileSharer.hpp:9-13</span>
+      <span class="cite">server/include/server/service/fileSharer.hpp</span>
 
       <h2>2. offerFile</h2>
-      <pre><code>int FileSharer::offerFile(const std::string &filePath,
-                          const std::string &downloadName) {
-    while (true) {
-        const int port = server::utils::generateCode();
-        if (available_files_.find(port) == available_files_.end()) {
-            available_files_.emplace(port, SharedFile{filePath, downloadName});
-            return port;
-        }
-    }
-}</code></pre>
-      <span class="cite">server/src/services/fileSharer.cpp:80-90</span>
-      <p>Infinite loop only if all 16k ports collide — astronomically unlikely.</p>
+      <pre><code>int offerFile(filePath, downloadName, maxDownloads = 1);</code></pre>
+      <p>Random invite port 49152–65534; stores file metadata. Does <strong>not</strong> open TCP on that port for HTTP downloads.</p>
 
-      <h2>3. startFileServer — blocking accept model</h2>
-      <pre><code>listen(server_fd, 1);   // backlog 1 — one pending connection
-client_fd = accept(...);
-std::thread sender(fileSenderHandler, client_fd, filePath, downloadName);
-sender.join();
-close(server_fd);</code></pre>
-      <span class="cite">server/src/services/fileSharer.cpp:138-167</span>
-      <p>After one download completes, the P2P server <strong>closes</strong> — invite port is spent.</p>
-
-      <h2>4. fileSenderHandler</h2>
+      <h2>3. receiveViaLocalP2P (HTTP download path)</h2>
       <ol>
-        <li>Send ASCII header line with display name</li>
-        <li>Stream file in 4096-byte chunks via <code>send()</code></li>
-        <li><code>close(client_fd)</code></li>
+        <li><code>claimInviteForTransfer</code> — mutex + in-progress flag</li>
+        <li><code>socketpair</code> — two connected FDs</li>
+        <li>Detached sender thread: <code>fileSenderHandler(sendFd, path, name)</code></li>
+        <li>Receiver: <code>recvLine</code> (header), <code>recvAllToString</code> (body)</li>
+        <li><code>recordSuccessfulDownload</code> — bump count, maybe <code>consumeInvite</code></li>
       </ol>
-      <span class="cite">server/src/services/fileSharer.cpp:19-67</span>
+      <div class="callout ok">
+        Avoids upload-time TCP races: each download gets a fresh socket pair; invite port is only a lookup key.
+      </div>
 
-      <h2>5. tryGetDownloadName</h2>
-      <pre><code>bool FileSharer::tryGetDownloadName(int port, std::string &outName) const;</code></pre>
-      <span class="cite">server/src/services/fileSharer.cpp:71-77</span>
-      <p>Used by HTTP download handler before TCP header parse — preserves extension in browser.</p>
+      <h2>4. consumeInvite</h2>
+      <p>Removes entry from <code>available_files_</code>, deletes file from disk, logs <code>P2P invite consumed</code>.</p>
+
+      <h2>5. startFileServer (legacy / remote)</h2>
+      <p>
+        Optional TCP listener bound to the invite port for true remote peers.
+        Not used on the normal upload → HTTP download path.
+      </p>
+
+      <h2>6. Logging (verbose)</h2>
+      <pre><code>P2P offer: invite_port=… max_downloads=N
+P2P download start invite_port=…
+P2P channel ready invite_port=…
+P2P send: complete … bytes=…
+P2P download recorded … count=X/Y remaining=Z
+P2P invite consumed …</code></pre>
     </main>
   </div>
   <script src="assets/js/manual.js"></script>
