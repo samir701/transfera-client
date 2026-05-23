@@ -1,0 +1,22 @@
+# Ignore everything by default
+**
+
+# Allow necessary server files
+!CMakeLists.txt
+!src/
+!include/
+!server
+
+# Exclude build outputs and temporary files
+build
+CMakeFiles
+CMakeCache.txt
+cmake_install.cmake
+*.o
+*.obj
+*.d
+
+# Exclude node/ui and repo metadata
+../ui
+../node_modules
+../.git
